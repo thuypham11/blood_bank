@@ -27,7 +27,7 @@ const MyAppointments = () => {
       }
     } catch (error) {
       console.error("❌ Fetch error:", error);
-      toast.error("Lỗi kết nối server");
+      toast.error("Lỗi nối server");
     } finally {
       setLoading(false);
     }
