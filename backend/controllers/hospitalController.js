@@ -3,15 +3,6 @@ import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import Donor from "../models/donorModel.js";
 
-/* ==============================================================
-   HOSPITAL BLOOD REQUEST MANAGEMENT
-   ============================================================== */
-
-/**
- * @desc Hospital requests blood from lab
- * @route POST /api/hospital/blood/request
- * @access Private (Hospital)
- */
 export const hospitalRequestBlood = async (req, res) => {
   try {
     const hospitalId = req.user._id;
