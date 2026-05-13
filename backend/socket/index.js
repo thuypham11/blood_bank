@@ -1,6 +1,6 @@
 // backend/socket/index.js
 import { Server } from "socket.io";
-import { getGeminiResponse } from "../services/geminiService.js";
+import { getOpenRouterResponse } from "../services/openrouterService.js";
 
 let io;
 
@@ -27,8 +27,8 @@ socket.on("send_message", async (data) => {
     try {
         // *** GỌI HÀM MỚI TỪ GEMINI SERVICE ***
         // Lấy lịch sử hội thoại và tin nhắn hiện tại, gửi đến Gemini
-        const aiResponse = await getGeminiResponse(data.message, conversationHistory);
-        
+        const aiResponse = await getOpenRouterResponse(data.message, conversationHistory);
+
         // Cập nhật lịch sử hội thoại với cặp tin nhắn vừa rồi
         conversationHistory.push(
             { role: "user", parts: [{ text: data.message }] },

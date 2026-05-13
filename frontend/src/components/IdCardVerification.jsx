@@ -23,7 +23,6 @@ const IdCardVerification = ({ onVerified }) => {
     setUploading(true);
     try {
       const token = localStorage.getItem("token");
-      // SỬA: gửi fd (FormData chứa file) thay vì formData (state)
       const { data } = await axios.post("/api/donor/upload-id-card", fd, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
       });
@@ -48,7 +47,6 @@ const IdCardVerification = ({ onVerified }) => {
     setSubmitting(true);
     try {
       const token = localStorage.getItem("token");
-      // Gửi đúng object { idCardData: formData } như backend yêu cầu
       const { data } = await axios.post("/api/donor/verify-id-card", { idCardData: formData }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -81,8 +79,10 @@ const IdCardVerification = ({ onVerified }) => {
             <label>Họ tên: <input name="fullName" value={formData.fullName} onChange={onChange} className="border p-2 rounded w-full" /></label>
             <label>Ngày sinh: <input name="birthDate" value={formData.birthDate} onChange={onChange} className="border p-2 rounded w-full" /></label>
             <label>Giới tính: <select name="gender" value={formData.gender} onChange={onChange} className="border p-2 rounded w-full"><option>Nam</option><option>Nữ</option></select></label>
-            <label className="col-span-2">Quê quán: <input name="home" value={formData.home} onChange={onChange} className="border p-2 rounded w-full" /></label>
-            <label className="col-span-2">Địa chỉ thường trú: <input name="address" value={formData.address} onChange={onChange} className="border p-2 rounded w-full" /></label>
+            <label>Quê quán: <input name="home" value={formData.home} onChange={onChange} className="border p-2 rounded w-full" /></label>
+            <label>Địa chỉ thường trú: <input name="address" value={formData.address} onChange={onChange} className="border p-2 rounded w-full" /></label>
+            <label>Ngày cấp: <input name="issueDate" value={formData.issueDate} onChange={onChange} className="border p-2 rounded w-full" /></label>
+            <label>Ngày hết hạn: <input name="expiryDate" value={formData.expiryDate} onChange={onChange} className="border p-2 rounded w-full" /></label>
           </div>
           <button onClick={handleSubmit} disabled={submitting} className="bg-red-600 text-white px-4 py-2 rounded-lg w-full">Xác nhận và lưu</button>
         </div>
