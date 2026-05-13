@@ -93,6 +93,20 @@ const donorSchema = new mongoose.Schema(
 			},
 		],
 
+		idCard: {
+  number: { type: String, unique: true, sparse: true },      // Số CCCD
+  fullName: { type: String },
+  birthDate: { type: Date },
+  gender: { type: String, enum: ["Nam", "Nữ"] },
+  home: { type: String },                                    // Quê quán
+  address: { type: String },                                 // Địa chỉ thường trú
+  issueDate: { type: Date },
+  expiryDate: { type: Date },
+  imageUrl: { type: String },                                // Đường dẫn ảnh đã upload
+  verifiedAt: { type: Date },
+},
+isIdVerified: { type: Boolean, default: false },  
+
 		// 🔐 Security & Access
 		lastLogin: Date,
 		loginAttempts: { type: Number, default: 0 },

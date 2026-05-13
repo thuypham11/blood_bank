@@ -12,14 +12,16 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "axios": "^1.12.2",
+    "axios": "^1.16.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "form-data": "^4.0.5",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.19.0",
     "mongoose": "^8.19.0",
+    "multer": "^2.1.1",
     "nodemon": "^3.1.10",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
