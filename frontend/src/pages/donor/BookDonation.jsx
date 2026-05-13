@@ -20,7 +20,24 @@ const BookDonation = () => {
   
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
-
+  useEffect(() => {
+  const checkVerification = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/donor/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.donor && !data.donor.isIdVerified) {
+        toast.error('Bạn cần xác thực CCCD trước khi đặt lịch hiến máu');
+        navigate('/donor/profile');
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  checkVerification();
+}, [navigate]);
   // Lấy danh sách điểm hiến máu từ database
   const fetchCamps = async () => {
     try {
