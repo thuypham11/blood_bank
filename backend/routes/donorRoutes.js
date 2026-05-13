@@ -19,6 +19,7 @@ import {
 } from "../controllers/donationController.js";
 import Donor from "../models/donorModel.js";
 import axios from "axios";
+import { uploadIdCard, verifyAndSaveIdCard } from "../controllers/donorController.js";
 const router = express.Router();
 
 // Profile routes
@@ -46,8 +47,8 @@ router.get("/camps", protectDonor, getAvailableCamps);
 router.post("/appointments", protectDonor, createAppointment);
 router.get("/appointments", protectDonor, getMyAppointments);
 router.put("/appointments/:id/cancel", protectDonor, cancelAppointment);
-
-// Public route for Golang (no authentication required)
+router.post("/upload-id-card", protectDonor, uploadIdCard);
+router.post("/verify-id-card", protectDonor, verifyAndSaveIdCard);// Public route for Golang (no authentication required)
 router.get("/public/test-results/:email", async (req, res) => {
   try {
     const donor = await Donor.findOne({ email: req.params.email }).populate({
