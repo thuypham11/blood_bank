@@ -24,10 +24,34 @@ const bloodRequestSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ["pending", "accepted", "rejected"], 
+    enum: ["pending", "accepted", "rejected", "completed"], 
     default: "pending" 
   },
+  handoverStatus: {
+    type: String,
+    enum: ["requested", "received", "preparing", "packed", "shipping", "confirmed"],
+    default: "requested"
+  },
+  handoverTimeline: [
+    {
+      status: {
+        type: String,
+        enum: ["requested", "received", "preparing", "packed", "shipping", "confirmed", "rejected"]
+      },
+      label: String,
+      date: {
+        type: Date,
+        default: Date.now
+      },
+      actor: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Facility"
+      },
+      note: String
+    }
+  ],
   processedAt: Date,
+  confirmedAt: Date,
   notes: String
 }, { timestamps: true });
 
