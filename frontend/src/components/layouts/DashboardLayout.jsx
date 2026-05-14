@@ -136,8 +136,9 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 			items: [
 				{ path: "/admin", label: "Tổng Quan", icon: BarChart3, badge: null },
 				{ path: "/admin/verification", label: "Xác Minh", icon: Shield, badge: null },
-				{ path: "/admin/facilities", label: "Cơ Sở", icon: Building, badge: null },
+				{ path: "/admin/facilities", label: "Cơ Sở Y Tế", icon: Building, badge: null },
 				{ path: "/admin/donors", label: "Người Hiến Máu", icon: User, badge: null },
+				{ path: "/admin/profile", label: "Hồ Sơ", icon: Settings, badge: null },
 			],
 		},
 	};

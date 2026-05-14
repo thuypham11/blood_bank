@@ -1,10 +1,16 @@
 // backend/services/openrouterService.js
 import OpenAI from 'openai';
 
-const openrouter = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1"
-});
+let openrouter = null;
+function getClient() {
+  if (!openrouter) {
+    openrouter = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY || "placeholder",
+      baseURL: "https://openrouter.ai/api/v1",
+    });
+  }
+  return openrouter;
+}
 
 // Danh sách model thử nghiệm theo thứ tự ưu tiên
 const MODEL_LIST = [
@@ -33,7 +39,7 @@ export async function getOpenRouterResponse(userMessage, history = []) {
   for (const model of MODEL_LIST) {
     try {
       console.log(`🔄 Đang thử model: ${model}`);
-      const completion = await openrouter.chat.completions.create({
+      const completion = await getClient().chat.completions.create({
         model: model,
         messages: messages,
         temperature: 0.7,
