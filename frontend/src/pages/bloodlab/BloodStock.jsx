@@ -8,6 +8,10 @@ import {
 	AlertTriangle,
 	Beaker,
 	TrendingDown,
+	CheckCircle,
+	Clock,
+	XCircle,
+	TestTube,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -20,7 +24,95 @@ const BloodStock = () => {
 		bloodType: "",
 		quantity: "",
 	});
+	const [showScreeningModal, setShowScreeningModal] = useState(false);
+const [selectedBlood, setSelectedBlood] = useState(null);
 
+const [screeningForm, setScreeningForm] = useState({
+  hiv: "pending",
+  hbv: "pending",
+  hcv: "pending",
+});
+const getScreeningBadge = (value) => {
+	const config = {
+		negative: "bg-green-100 text-green-700",
+		positive: "bg-red-100 text-red-700",
+		pending: "bg-amber-100 text-amber-700",
+	};
+
+	const label = {
+		negative: "Âm tính",
+		positive: "Dương tính",
+		pending: "Đang xét nghiệm",
+	};
+
+	return (
+		<span className={`px-2 py-1 rounded-full text-xs font-medium ${config[value] || config.pending}`}>
+			{label[value] || "Đang xét nghiệm"}
+		</span>
+	);
+};
+
+const getUnitStatusBadge = (status) => {
+	if (status === "available") {
+		return (
+			<span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+				<CheckCircle className="w-3 h-3" />
+				Sẵn sàng
+			</span>
+		);
+	}
+
+	if (status === "rejected") {
+		return (
+			<span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+				<XCircle className="w-3 h-3" />
+				Bị loại
+			</span>
+		);
+	}
+
+	return (
+		<span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+			<Clock className="w-3 h-3" />
+			Đang xét nghiệm
+		</span>
+	);
+};
+const openScreeningModal = (blood) => {
+  setSelectedBlood(blood);
+
+  setScreeningForm({
+    hiv: blood.screeningResult?.hiv || "pending",
+    hbv: blood.screeningResult?.hbv || "pending",
+    hcv: blood.screeningResult?.hcv || "pending",
+  });
+
+  setShowScreeningModal(true);
+};
+const handleUpdateScreening = async () => {
+  try {
+    const token = localStorage.getItem("token");
+
+    await axios.patch(
+      `${API_URL}/blood/${selectedBlood._id}/screening`,
+      screeningForm,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    toast.success("Cập nhật sàng lọc thành công");
+    setShowScreeningModal(false);
+
+    // đổi fetchBloodStock thành đúng tên hàm load kho máu của bạn
+    window.location.reload();
+  } catch (error) {
+    console.error("Lỗi cập nhật sàng lọc:", error);
+    toast.error("Cập nhật sàng lọc thất bại");
+  }
+};
 	const token = localStorage.getItem("token");
 	const API_URL = "http://localhost:5000/api/blood-lab";
 
@@ -90,7 +182,7 @@ const BloodStock = () => {
 	const lowStockItems = stock.filter((item) => item.quantity < 10);
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
+		<div className="min-h-screen bg-linear-to-br from-red-50 to-white p-6">
 			{/* Tiêu đề */}
 			<div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
 				<div>
@@ -115,7 +207,7 @@ const BloodStock = () => {
 			{/* Cảnh báo tồn kho thấp */}
 			{lowStockItems.length > 0 && (
 				<div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
-					<AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+					<AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
 					<div>
 						<p className="font-medium text-amber-800">Cảnh Báo Tồn Kho Thấp</p>
 						<p className="text-amber-600 text-sm">{lowStockItems.length} nhóm máu đang có tồn kho thấp</p>
@@ -226,59 +318,240 @@ const BloodStock = () => {
 									<th className="text-left p-3 font-medium text-gray-700">Trạng Thái</th>
 									<th className="text-left p-3 font-medium text-gray-700">Ngày Hết Hạn</th>
 									<th className="text-left p-3 font-medium text-gray-700">Cập Nhật Lần Cuối</th>
+									<th>Kết Quả Sàng Lọc</th>
+<th>Trạng Thái Đơn Vị Máu</th>
+<th>Thao Tác</th>
 								</tr>
 							</thead>
-							<tbody>
-								{stock.map((item) => {
-									const isLowStock = item.quantity < 10;
-									const isCritical = item.quantity < 5;
+						<tbody>
+  {stock.map((item) => {
+    const isLowStock = item.quantity < 10;
+    const isCritical = item.quantity < 5;
 
-									return (
-										<tr key={item._id} className="border-b hover:bg-gray-50 transition-colors">
-											<td className="p-3">
-												<span className="font-medium text-gray-800">{item.bloodGroup}</span>
-											</td>
-											<td className="p-3">
-												<span
-													className={`font-bold ${
-														isCritical ? "text-red-600" : isLowStock ? "text-amber-600" : "text-gray-800"
-													}`}>
-													{item.quantity} đơn vị
-												</span>
-											</td>
-											<td className="p-3">
-												{isCritical ? (
-													<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
-														<TrendingDown className="w-3 h-3" />
-														Nguy Cấp
-													</span>
-												) : isLowStock ? (
-													<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-														<AlertTriangle className="w-3 h-3" />
-														Tồn Kho Thấp
-													</span>
-												) : (
-													<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-														Đủ Dùng
-													</span>
-												)}
-											</td>
-											<td className="p-3 text-gray-600">
-												{new Date(item.expiryDate).toLocaleDateString("vi-VN")}
-											</td>
-											<td className="p-3 text-gray-600">
-												{new Date(item.updatedAt || item.createdAt).toLocaleDateString("vi-VN")}
-											</td>
-										</tr>
-									);
-								})}
-							</tbody>
+    return (
+      <tr
+        key={item._id}
+        className="border-b hover:bg-gray-50 transition-colors align-middle"
+      >
+        <td className="p-4 align-middle">
+          <span className="font-bold text-red-600">
+            {item.bloodType}
+          </span>
+        </td>
+
+        <td className="p-4 align-middle">
+          <span
+            className={`font-bold ${
+              isCritical
+                ? "text-red-600"
+                : isLowStock
+                ? "text-amber-600"
+                : "text-gray-800"
+            }`}
+          >
+            {item.quantity} đơn vị
+          </span>
+        </td>
+
+        <td className="p-4 align-middle">
+          {isCritical ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+              <TrendingDown className="w-3 h-3" />
+              Nguy Cấp
+            </span>
+          ) : isLowStock ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+              <AlertTriangle className="w-3 h-3" />
+              Tồn Kho Thấp
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+              Đủ Dùng
+            </span>
+          )}
+        </td>
+
+        <td className="p-4 align-middle text-sm text-gray-600">
+          {item.expiryDate ? (
+  <span className="text-gray-700 font-medium">
+    {new Date(item.expiryDate).toLocaleDateString("vi-VN")}
+  </span>
+) : (
+  <span className="text-amber-600 text-sm italic">
+    Chưa cập nhật
+  </span>
+)}
+        </td>
+
+        <td className="p-4 align-middle text-sm text-gray-600">
+          {item.updatedAt
+            ? new Date(item.updatedAt).toLocaleDateString("vi-VN")
+            : "Chưa có"}
+        </td>
+
+        <td className="p-4 align-middle">
+          <div className="space-y-2 min-w">
+	<div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+		<div className="flex items-center gap-2">
+			<div className="w-2 h-2 rounded-full bg-red-500"></div>
+
+			<span className="text-sm font-semibold text-gray-700">
+				HIV
+			</span>
+		</div>
+
+		{getScreeningBadge(item.screeningResult?.hiv || "pending")}
+	</div>
+
+	<div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+		<div className="flex items-center gap-2">
+			<div className="w-2 h-2 rounded-full bg-amber-500"></div>
+
+			<span className="text-sm font-semibold text-gray-700">
+				HBV
+			</span>
+		</div>
+
+		{getScreeningBadge(item.screeningResult?.hbv || "pending")}
+	</div>
+
+	<div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+		<div className="flex items-center gap-2">
+			<div className="w-2 h-2 rounded-full bg-blue-500"></div>
+
+			<span className="text-sm font-semibold text-gray-700">
+				HCV
+			</span>
+		</div>
+
+		{getScreeningBadge(item.screeningResult?.hcv || "pending")}
+	</div>
+</div>
+        </td>
+
+        <td className="p-4 align-middle">
+          <div className="flex items-center justify-center">
+            {getUnitStatusBadge(item.status)}
+          </div>
+        </td>
+
+        <td className="p-4 align-middle">
+          <div className="flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => openScreeningModal(item)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-all shadow-sm hover:shadow-md"
+            >
+              <TestTube className="w-4 h-4" />
+              Cập nhật
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
 						</table>
 					</div>
 				)}
 			</div>
+			{showScreeningModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-red-100 overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800">
+            Cập nhật kết quả sàng lọc
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Nhóm máu: {selectedBlood?.bloodType}
+          </p>
+        </div>
+
+        <button
+          onClick={() => setShowScreeningModal(false)}
+          className="text-gray-400 hover:text-gray-600 text-xl"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="p-6 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            HIV
+          </label>
+          <select
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+            value={screeningForm.hiv}
+            onChange={(e) =>
+              setScreeningForm({ ...screeningForm, hiv: e.target.value })
+            }
+          >
+            <option value="pending">Đang xét nghiệm</option>
+            <option value="negative">Âm tính</option>
+            <option value="positive">Dương tính</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            HBV
+          </label>
+          <select
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+            value={screeningForm.hbv}
+            onChange={(e) =>
+              setScreeningForm({ ...screeningForm, hbv: e.target.value })
+            }
+          >
+            <option value="pending">Đang xét nghiệm</option>
+            <option value="negative">Âm tính</option>
+            <option value="positive">Dương tính</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            HCV
+          </label>
+          <select
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+            value={screeningForm.hcv}
+            onChange={(e) =>
+              setScreeningForm({ ...screeningForm, hcv: e.target.value })
+            }
+          >
+            <option value="pending">Đang xét nghiệm</option>
+            <option value="negative">Âm tính</option>
+            <option value="positive">Dương tính</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 border-t border-gray-100">
+        <button
+          onClick={() => setShowScreeningModal(false)}
+          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+        >
+          Hủy
+        </button>
+
+        <button
+          onClick={handleUpdateScreening}
+          className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+        >
+          Lưu kết quả
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 		</div>
+		
 	);
+
+	
 };
 
 export default BloodStock;

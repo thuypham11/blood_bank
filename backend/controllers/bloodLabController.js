@@ -21,7 +21,6 @@ export const getBloodLabDashboard = async (req, res) => {
     const [camps, stock, facility] = await Promise.all([
       BloodCamp.find({ hospital: labId }).sort({ createdAt: -1 }),
       Blood.find({ bloodLab: labId }),
-      // FIX: Select the history field
       Facility.findById(labId).select('history name email phone address operatingHours status lastLogin') // select relevant fields
     ]);
 
@@ -350,20 +349,20 @@ export const addBloodStock = async (req, res) => {
     const { bloodType, quantity } = req.body;
     const bloodLab = req.user._id;
 
-    if (!bloodType || !quantity || quantity <= 0) {
+    if (!bloodType || !quantity || Number(quantity) <= 0) {
       return res.status(400).json({
         success: false,
         message: "Please provide valid bloodType and quantity",
       });
     }
 
-    // Auto expiry (42 days later)
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 42);
 
-    const createdAt = new Date();
-
-    let stock = await Blood.findOne({ bloodGroup: bloodType, bloodLab });
+    let stock = await Blood.findOne({
+      hospital: bloodLab,
+      bloodType: bloodType,
+    });
 
     if (stock) {
       stock.quantity += Number(quantity);
@@ -371,14 +370,13 @@ export const addBloodStock = async (req, res) => {
       await stock.save();
     } else {
       stock = await Blood.create({
-        bloodGroup: bloodType,
+        hospital: bloodLab,
+        bloodType: bloodType,
         quantity: Number(quantity),
         expiryDate,
-        bloodLab,
       });
     }
 
-    // Add to facility history
     await Facility.findByIdAndUpdate(bloodLab, {
       $push: {
         history: {
@@ -402,7 +400,66 @@ export const addBloodStock = async (req, res) => {
     });
   }
 };
+export const updateBloodScreening = async (req, res) => {
+  try {
+    const labId = req.user._id;
 
+    const { id } = req.params;
+
+    const { hiv, hbv, hcv } = req.body;
+
+    const blood = await Blood.findOne({
+      _id: id,
+      hospital: labId,
+    });
+
+    if (!blood) {
+      return res.status(404).json({
+        success: false,
+        message: "Blood unit not found",
+      });
+    }
+
+    blood.screeningResult = {
+      hiv,
+      hbv,
+      hcv,
+    };
+
+    // Logic cập nhật trạng thái
+    if (
+      hiv === "positive" ||
+      hbv === "positive" ||
+      hcv === "positive"
+    ) {
+      blood.status = "rejected";
+    } else if (
+      hiv === "negative" &&
+      hbv === "negative" &&
+      hcv === "negative"
+    ) {
+      blood.status = "available";
+    } else {
+      blood.status = "pending_testing";
+    }
+
+    await blood.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Screening result updated successfully",
+      data: blood,
+    });
+
+  } catch (error) {
+    console.error("Update Screening Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update screening result",
+    });
+  }
+};
 /**
  * @desc Remove Blood Units from Stock (FIXED)
  * @route POST /api/blood-lab/blood/remove
@@ -420,7 +477,10 @@ export const removeBloodStock = async (req, res) => {
       });
     }
 
-    const stock = await Blood.findOne({ bloodGroup: bloodType, bloodLab });
+   const stock = await Blood.findOne({
+  hospital: bloodLab,
+  bloodType: bloodType,
+});
 
     if (!stock) {
       return res.status(404).json({
@@ -479,11 +539,11 @@ export const getBloodStock = async (req, res) => {
   try {
     const labId = req.user._id;
 
-    const stock = await Blood.find({ bloodLab: labId }).sort({ bloodGroup: 1 });
+    const stock = await Blood.find({ hospital: labId }).sort({ bloodType: 1 });
 
     res.json({
       success: true,
-      data: stock
+      data: stock,
     });
   } catch (error) {
     console.error("Get Blood Stock Error:", error);
@@ -605,7 +665,13 @@ export const updateBloodRequestStatus = async (req, res) => {
           bloodGroup: request.bloodType,
           quantity: request.units,
           expiryDate,
-          hospital: request.hospitalId._id // This is the fix
+          hospital: request.hospitalId._id,
+          screeningResult: {
+           hiv: "pending",
+           hbv: "pending",
+           hcv: "pending",
+          },
+status: "pending_testing",// This is the fix
         });
       }
 
