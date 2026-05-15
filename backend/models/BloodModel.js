@@ -25,10 +25,28 @@ const bloodSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+  screeningResult: {
+      hiv: {
+        type: String,
+        enum: ["pending", "negative", "positive"],
+        default: "pending",
+      },
+      hbv: {
+        type: String,
+        enum: ["pending", "negative", "positive"],
+        default: "pending",
+      },
+      hcv: {
+        type: String,
+        enum: ["pending", "negative", "positive"],
+        default: "pending",
+      },
+    },
+
     status: {
       type: String,
-      enum: ["available", "used", "expired"],
-      default: "available",
+      enum: ["pending_testing", "available", "used", "expired", "rejected"],
+      default: "pending_testing",
     },
   },
   { timestamps: true }
