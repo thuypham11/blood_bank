@@ -21,6 +21,7 @@ import {
 	Stethoscope,
 	DockIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
@@ -33,7 +34,7 @@ const LandingPage = () => {
 		{ icon: Clock, label: "Thời gian phản hồi", value: "< 10 phút" },
 	];
 
-	const bloodTypes = [
+	const defaultBloodTypes = [
 		{ type: "A+", need: "Cao", donors: "32%" },
 		{ type: "A-", need: "Rất khẩn cấp", donors: "8%" },
 		{ type: "B+", need: "Trung bình", donors: "12%" },
@@ -43,6 +44,25 @@ const LandingPage = () => {
 		{ type: "AB+", need: "Thấp", donors: "4%" },
 		{ type: "AB-", need: "Trung bình", donors: "1%" },
 	];
+
+	const [bloodTypes, setBloodTypes] = useState(defaultBloodTypes);
+
+	useEffect(() => {
+		const loadBloodNeeds = async () => {
+			try {
+				const res = await fetch("http://localhost:5000/api/hospital/blood/needs");
+				if (!res.ok) return;
+				const data = await res.json();
+				if (Array.isArray(data.data) && data.data.length > 0) {
+					setBloodTypes(data.data);
+				}
+			} catch (error) {
+				console.error("Khong the tai nhu cau mau hien tai:", error);
+			}
+		};
+
+		loadBloodNeeds();
+	}, []);
 
 	const donationFacts = [
 		{
@@ -178,6 +198,9 @@ const LandingPage = () => {
 		},
 	];
 
+	const isCriticalNeed = (need) => need === "Rất khẩn cấp" || need === "Ráº¥t kháº©n cáº¥p";
+	const isHighNeed = (need) => need === "Cao";
+
 	return (
 		<div className="min-h-screen bg-gradient-to-b from-slate-50 to-red-50 mt-10">
 			<Header />
@@ -304,9 +327,9 @@ const LandingPage = () => {
 								className="bg-white rounded-xl shadow-lg p-4 text-center hover:shadow-xl transition-all duration-300">
 								<div
 									className={`text-2xl font-bold mb-2 ${
-										blood.need === "Rất khẩn cấp"
+										isCriticalNeed(blood.need)
 											? "text-red-600"
-											: blood.need === "Cao"
+											: isHighNeed(blood.need)
 												? "text-orange-500"
 												: "text-green-500"
 									}`}>
@@ -314,9 +337,9 @@ const LandingPage = () => {
 								</div>
 								<div
 									className={`text-sm font-medium px-2 py-1 rounded-full ${
-										blood.need === "Rất khẩn cấp"
+										isCriticalNeed(blood.need)
 											? "bg-red-100 text-red-700"
-											: blood.need === "Cao"
+											: isHighNeed(blood.need)
 												? "bg-orange-100 text-orange-700"
 												: "bg-green-100 text-green-700"
 									}`}>
