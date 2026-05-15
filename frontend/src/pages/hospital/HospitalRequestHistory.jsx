@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
-import { CheckCircle, XCircle, Clock, MapPin, Calendar } from "lucide-react";
+import { CheckCircle, XCircle, Clock, MapPin, Calendar, Truck, PackageCheck } from "lucide-react";
 
 const HospitalRequestHistory = () => {
 	const [requests, setRequests] = useState([]);
@@ -32,8 +32,42 @@ const HospitalRequestHistory = () => {
 			pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock, label: "Chờ Xử Lý" },
 			accepted: { color: "bg-green-100 text-green-800", icon: CheckCircle, label: "Đã Chấp Nhận" },
 			rejected: { color: "bg-red-100 text-red-800", icon: XCircle, label: "Bị Từ Chối" },
+			completed: { color: "bg-blue-100 text-blue-800", icon: PackageCheck, label: "Đã Nhận Máu" },
 		};
 		return config[status] || config.pending;
+	};
+
+	const handoverSteps = [
+		{ key: "requested", label: "Gửi yêu cầu" },
+		{ key: "received", label: "Tiếp nhận" },
+		{ key: "preparing", label: "Chuẩn bị" },
+		{ key: "packed", label: "Đóng gói" },
+		{ key: "shipping", label: "Vận chuyển" },
+		{ key: "confirmed", label: "Xác nhận" },
+	];
+
+	const getHandoverIndex = (status) => handoverSteps.findIndex((step) => step.key === status);
+
+	const confirmHandover = async (id) => {
+		try {
+			const token = localStorage.getItem("token");
+			await axios.patch(
+				`http://localhost:5000/api/hospital/blood/requests/${id}/confirm`,
+				{},
+				{ headers: { Authorization: `Bearer ${token}` } },
+			);
+			toast.success("Đã xác nhận bàn giao máu");
+			setRequests((prev) =>
+				prev.map((request) =>
+					request._id === id
+						? { ...request, status: "completed", handoverStatus: "confirmed", confirmedAt: new Date().toISOString() }
+						: request,
+				),
+			);
+		} catch (err) {
+			console.error("Lỗi xác nhận bàn giao:", err);
+			toast.error(err.response?.data?.message || "Không thể xác nhận bàn giao");
+		}
 	};
 
 	if (loading) {
@@ -106,6 +140,7 @@ const HospitalRequestHistory = () => {
 										<th className="p-4 text-left font-semibold text-gray-700">Nhóm Máu</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Số Đơn Vị</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Trạng Thái</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Bàn Giao</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Ngày Yêu Cầu</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Ngày Xử Lý</th>
 									</tr>
@@ -150,6 +185,39 @@ const HospitalRequestHistory = () => {
 														<IconComponent size={14} />
 														{statusConfig.label}
 													</span>
+												</td>
+												<td className="p-4 min-w-[280px]">
+													<div className="flex items-center gap-1">
+														{handoverSteps.map((step, index) => {
+															const activeIndex = getHandoverIndex(request.handoverStatus || "requested");
+															const isDone = index <= activeIndex;
+															return (
+																<div key={step.key} className="flex items-center">
+																	<div
+																		title={step.label}
+																		className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold ${
+																			isDone ? "bg-red-600 text-white" : "bg-gray-100 text-gray-400"
+																		}`}>
+																		{index + 1}
+																	</div>
+																	{index < handoverSteps.length - 1 && (
+																		<div className={`h-0.5 w-4 ${index < activeIndex ? "bg-red-500" : "bg-gray-200"}`} />
+																	)}
+																</div>
+															);
+														})}
+													</div>
+													<div className="mt-2 text-xs text-gray-500 flex items-center gap-1">
+														<Truck size={12} />
+														{handoverSteps[getHandoverIndex(request.handoverStatus || "requested")]?.label || "Gửi yêu cầu"}
+													</div>
+													{request.handoverStatus === "shipping" && (
+														<button
+															onClick={() => confirmHandover(request._id)}
+															className="mt-2 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium">
+															Ký xác nhận
+														</button>
+													)}
 												</td>
 												<td className="p-4 text-sm text-gray-600">
 													{new Date(request.createdAt).toLocaleDateString("vi-VN")}
