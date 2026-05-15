@@ -4,6 +4,17 @@ import BloodCamp from "../models/bloodCampModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 
+const HANDOVER_LABELS = {
+  requested: "Bệnh viện gửi yêu cầu",
+  received: "Ngân hàng máu tiếp nhận",
+  preparing: "Chuẩn bị máu",
+  packed: "Đóng gói",
+  shipping: "Vận chuyển",
+  confirmed: "Bệnh viện ký, xác nhận",
+  rejected: "Từ chối yêu cầu"
+};
+
+const HANDOVER_FLOW = ["received", "preparing", "packed", "shipping"];
 
 /* ==============================================================
    BLOOD LAB DASHBOARD & HISTORY
@@ -563,7 +574,8 @@ export const updateBloodRequestStatus = async (req, res) => {
       });
     }
 
-    // If accepting, check stock availability
+    // If accepting, check stock availability. Actual stock transfer happens
+    // when the hospital signs and confirms the handover.
     if (action === "accept") {
       const labStock = await Blood.findOne({ 
         bloodLab: labId, 
@@ -577,44 +589,12 @@ export const updateBloodRequestStatus = async (req, res) => {
         });
       }
 
-      // Remove from lab stock
-      labStock.quantity -= request.units;
-      
-      if (labStock.quantity === 0) {
-        await Blood.findByIdAndDelete(labStock._id);
-      } else {
-        await labStock.save();
-      }
-
-      // Add to hospital stock (create or update)
-      const hospitalStock = await Blood.findOne({
-        hospital: request.hospitalId._id,
-        bloodGroup: request.bloodType
-      });
-
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 42); // 42 days expiry
-
-      if (hospitalStock) {
-        hospitalStock.quantity += request.units;
-        hospitalStock.expiryDate = expiryDate;
-        await hospitalStock.save();
-      } else {
-        // FIX: Use hospital field instead of bloodLab
-        await Blood.create({
-          bloodGroup: request.bloodType,
-          quantity: request.units,
-          expiryDate,
-          hospital: request.hospitalId._id // This is the fix
-        });
-      }
-
       // Add history to both facilities
       await Facility.findByIdAndUpdate(labId, {
         $push: {
           history: {
             eventType: "Stock Update",
-            description: `Transferred ${request.units} units of ${request.bloodType} to ${request.hospitalId.name}`,
+            description: `Accepted request for ${request.units} units of ${request.bloodType} from ${request.hospitalId.name}`,
             date: new Date(),
             referenceId: request._id,
           },
@@ -625,7 +605,7 @@ export const updateBloodRequestStatus = async (req, res) => {
         $push: {
           history: {
             eventType: "Stock Update",
-            description: `Received ${request.units} units of ${request.bloodType} from blood lab`,
+            description: `Blood lab accepted request for ${request.units} units of ${request.bloodType}`,
             date: new Date(),
             referenceId: request._id,
           },
@@ -647,6 +627,13 @@ export const updateBloodRequestStatus = async (req, res) => {
 
     // Update request status
     request.status = action === "accept" ? "accepted" : "rejected";
+    request.handoverStatus = action === "accept" ? "received" : "rejected";
+    request.handoverTimeline.push({
+      status: request.handoverStatus,
+      label: HANDOVER_LABELS[request.handoverStatus],
+      date: new Date(),
+      actor: labId
+    });
     request.processedAt = new Date();
     await request.save();
 
@@ -661,6 +648,82 @@ export const updateBloodRequestStatus = async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: err.message || "Failed to process request" 
+    });
+  }
+};
+
+/**
+ * @desc Move blood handover to the next logistics step
+ * @route PATCH /api/blood-lab/blood/requests/:id/handover
+ * @access Private (Blood Lab)
+ */
+export const updateBloodHandoverStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { handoverStatus } = req.body;
+    const labId = req.user._id;
+
+    if (!HANDOVER_FLOW.includes(handoverStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid handover status"
+      });
+    }
+
+    const request = await BloodRequest.findOne({ _id: id, labId }).populate("hospitalId", "name");
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found" });
+    }
+
+    if (request.status !== "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: "Only accepted requests can be moved through handover"
+      });
+    }
+
+    const currentStatus = !request.handoverStatus || request.handoverStatus === "requested" ? "received" : request.handoverStatus;
+    const currentIndex = HANDOVER_FLOW.indexOf(currentStatus);
+    const nextIndex = HANDOVER_FLOW.indexOf(handoverStatus);
+
+    if (nextIndex !== currentIndex + 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Handover must move to the next step in order"
+      });
+    }
+
+    request.handoverStatus = handoverStatus;
+    request.handoverTimeline.push({
+      status: handoverStatus,
+      label: HANDOVER_LABELS[handoverStatus],
+      date: new Date(),
+      actor: labId
+    });
+    await request.save();
+
+    await Facility.findByIdAndUpdate(labId, {
+      $push: {
+        history: {
+          eventType: "Stock Update",
+          description: `${HANDOVER_LABELS[handoverStatus]}: ${request.units} units of ${request.bloodType} for ${request.hospitalId.name}`,
+          date: new Date(),
+          referenceId: request._id,
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Blood handover status updated",
+      data: request
+    });
+  } catch (err) {
+    console.error("Update Handover Status Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to update handover status"
     });
   }
 };
