@@ -9,19 +9,26 @@ import {
   getDonorTestResults,
   getDonorReminders,
   getDonationCertificate,
-  getUrgentBloodRequests
+  getUrgentBloodRequests,
+  sendOtp,        // ✅ THÊM
+  verifyOtp       
 } from "../controllers/donorController.js";
 import { 
   getAvailableCamps, 
   createAppointment,
   getMyAppointments,
-  cancelAppointment
+  cancelAppointment,
+  checkAppointmentEligibility 
 } from "../controllers/donationController.js";
 import Donor from "../models/donorModel.js";
 import axios from "axios";
 import { uploadIdCard, verifyAndSaveIdCard } from "../controllers/donorController.js";
+import { submitHealthDeclaration } from '../controllers/donationController.js';
 const router = express.Router();
-
+router.post("/check-appointment", protectDonor, checkAppointmentEligibility);
+router.post('/send-otp', protectDonor, sendOtp);
+router.post('/verify-otp', protectDonor, verifyOtp);
+router.post('/health-declaration', protectDonor, submitHealthDeclaration);
 // Profile routes
 router.get("/profile", protectDonor, getDonorProfile);
 router.put("/profile", protectDonor, updateDonorProfile);

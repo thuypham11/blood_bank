@@ -3,11 +3,14 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, MapPin, Clock, XCircle, Loader2, QrCode, Eye, AlertCircle } from "lucide-react";
 import { toast } from "react-hot-toast";
+import HealthDeclarationForm from "../../components/HealthDeclarationForm";
 
 const MyAppointments = () => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(null);
+  const [showHealthForm, setShowHealthForm] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
@@ -27,7 +30,7 @@ const MyAppointments = () => {
       }
     } catch (error) {
       console.error("❌ Fetch error:", error);
-      toast.error("Lỗi nối server");
+      toast.error("Lỗi kết nối server");
     } finally {
       setLoading(false);
     }
@@ -187,15 +190,17 @@ const MyAppointments = () => {
                           </button>
                         )}
                         
+                        {/* Chỉ hiển thị nút "Khai báo y tế" nếu status là confirmed */}
                         {app.status === "confirmed" && (
                           <button
                             onClick={() => {
-                              toast.success("Vui lòng xuất trình CCCD/CMND tại điểm hiến máu để check-in");
+                              setSelectedAppointment(app);
+                              setShowHealthForm(true);
                             }}
-                            className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                            className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                           >
                             <QrCode className="w-4 h-4" />
-                            Check-in
+                            Khai báo y tế
                           </button>
                         )}
                         
@@ -230,6 +235,20 @@ const MyAppointments = () => {
           </div>
         )}
       </div>
+
+      {/* Modal khai báo y tế */}
+      {showHealthForm && selectedAppointment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <HealthDeclarationForm
+            appointmentId={selectedAppointment._id}
+            onSuccess={() => {
+              setShowHealthForm(false);
+              fetchAppointments(); // refresh danh sách sau khi tạo QR thành công
+            }}
+            onClose={() => setShowHealthForm(false)}
+          />
+        </div>
+      )}
     </div>
   );
 };

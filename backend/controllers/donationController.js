@@ -3,7 +3,8 @@ import BloodCamp from "../models/bloodCampModel.js";
 import Donor from "../models/donorModel.js";
 import DonationAppointment from "../models/DonationAppointment.js";
 // KHÔNG cần import mongoose nếu không dùng transaction
-
+import QRCode from 'qrcode';
+import HealthDeclaration from '../models/HealthDeclaration.js';
 // Lấy danh sách camps
 export const getAvailableCamps = async (req, res) => {
   try {
@@ -179,6 +180,90 @@ export const cancelAppointment = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi hủy lịch hẹn:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Thêm hàm mới: kiểm tra điều kiện (không tạo appointment)
+export const checkAppointmentEligibility = async (req, res) => {
+  try {
+    const donorId = req.donor?._id || req.donor?.id;
+    const { campId, appointmentDate, appointmentTime } = req.body;
+
+    if (!donorId || !campId || !appointmentDate || !appointmentTime) {
+      return res.status(400).json({ success: false, message: "Thiếu thông tin" });
+    }
+
+    // Kiểm tra camp tồn tại
+    const camp = await BloodCamp.findById(campId);
+    if (!camp) {
+      return res.status(404).json({ success: false, message: "Điểm hiến máu không tồn tại" });
+    }
+
+    // Kiểm tra ngày
+    const appointmentDateObj = new Date(appointmentDate);
+    const campDate = new Date(camp.date);
+    if (appointmentDateObj.toDateString() !== campDate.toDateString()) {
+      return res.status(400).json({ success: false, message: "Ngày đặt lịch phải trùng với ngày diễn ra sự kiện" });
+    }
+
+    // Kiểm tra trùng lịch
+    const existingAppointment = await DonationAppointment.findOne({
+      donor: donorId,
+      camp: campId,
+      status: { $in: ["pending", "confirmed", "checked_in"] }
+    });
+    if (existingAppointment) {
+      return res.status(400).json({ success: false, message: "Bạn đã đặt lịch cho điểm hiến máu này rồi" });
+    }
+
+    return res.json({ success: true, message: "Có thể đặt lịch" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Lỗi kiểm tra" });
+  }
+};
+
+export const submitHealthDeclaration = async (req, res) => {
+  try {
+    const donorId = req.donor?._id || req.donor?.id;
+    const { appointmentId, answers } = req.body;
+
+    // Kiểm tra lịch hẹn tồn tại và thuộc donor, status confirmed
+    const appointment = await DonationAppointment.findOne({
+      _id: appointmentId,
+      donor: donorId,
+      status: 'confirmed'
+    });
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: 'Lịch hẹn không hợp lệ' });
+    }
+
+    // Xóa declaration cũ (nếu có)
+    await HealthDeclaration.deleteMany({ donor: donorId, appointment: appointmentId });
+
+    // Tạo declaration mới
+    const declaration = new HealthDeclaration({
+      donor: donorId,
+      appointment: appointmentId,
+      answers
+    });
+    await declaration.save();
+
+    // Tạo QR code chứa declarationId
+    const qrPayload = JSON.stringify({ declarationId: declaration._id });
+    const qrCode = await QRCode.toDataURL(qrPayload);
+    declaration.qrCode = qrCode;
+    await declaration.save();
+
+    res.json({
+      success: true,
+      qrCode,
+      declarationId: declaration._id,
+      expiresAt: declaration.expiresAt
+    });
+  } catch (error) {
+    console.error('Submit health declaration error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

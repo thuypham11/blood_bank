@@ -8,6 +8,9 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { extractIdCardInfo } from "../services/ocrService.js";
+import BloodUnit from "../models/BloodUnit.js";
+import OTP from '../models/OTP.js';
+import axios from 'axios';
 
 // Cấu hình multer
 const storage = multer.diskStorage({
@@ -68,6 +71,8 @@ export const getDonorProfile = async (req, res) => {
         quantity: don.quantity,
         remarks: don.remarks,
         verified: don.verified,
+        birthDate: donor.birthDate,
+isIdVerified: donor.isIdVerified,
       })),
       createdAt: donor.createdAt,
       updatedAt: donor.updatedAt,
@@ -163,20 +168,27 @@ export const verifyAndSaveIdCard = async (req, res) => {
       return res.status(400).json({ success: false, message: "Thiếu thông tin CCCD" });
     }
 
-    // Kiểm tra trùng số CCCD với donor khác
-    const existing = await Donor.findOne({
-      "idCard.number": idCardData.number,
-      _id: { $ne: donorId },
-    });
+    // Kiểm tra trùng số CCCD
+    const existing = await Donor.findOne({ "idCard.number": idCardData.number, _id: { $ne: donorId } });
     if (existing) {
       return res.status(400).json({ success: false, message: "Số CCCD này đã được đăng ký bởi người khác" });
     }
 
     const parseDate = (dateStr) => (dateStr ? new Date(dateStr) : null);
 
+    // Cập nhật donor: ghi đè thông tin cá nhân từ CCCD
     const updatedDonor = await Donor.findByIdAndUpdate(
       donorId,
       {
+        fullName: idCardData.fullName,
+        gender: idCardData.gender,
+        birthDate: parseDate(idCardData.birthDate),
+        address: {
+          street: idCardData.address || "",
+          city: "", // có thể để trống hoặc giữ nguyên cũ, tuỳ logic
+          state: "",
+          pincode: "",
+        },
         idCard: {
           number: idCardData.number,
           fullName: idCardData.fullName,
@@ -195,7 +207,7 @@ export const verifyAndSaveIdCard = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Xác thực CCCD thành công",
+      message: "Xác thực CCCD thành công! Thông tin cá nhân đã được cập nhật.",
       donor: updatedDonor,
     });
   } catch (error) {
@@ -203,7 +215,6 @@ export const verifyAndSaveIdCard = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi lưu thông tin CCCD" });
   }
 };
-
 // ==================== BLOOD CAMPS ====================
 export const getDonorCamps = async (req, res) => {
   try {
@@ -594,5 +605,61 @@ const addToBloodStock = async (labId, bloodType, quantity) => {
     }
   } catch (error) {
     console.error("Error adding to blood stock:", error);
+  }
+};
+export const sendOtp = async (req, res) => {
+  try {
+    const donorId = req.donor.id;
+    const donor = await Donor.findById(donorId);
+    if (!donor) return res.status(404).json({ success: false, message: 'Donor not found' });
+
+    // Xóa OTP cũ (nếu có)
+    await OTP.deleteMany({ donorId });
+
+    // Tạo mã 6 số
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 phút
+
+    await OTP.create({ donorId, code: otpCode, expiresAt });
+
+    // Gọi Golang service gửi email OTP
+    await axios.post('http://localhost:8080/send-otp', {
+      toEmail: donor.email,
+      otpCode,
+      donorName: donor.fullName
+    });
+
+    res.json({ success: true, message: 'Mã OTP đã được gửi đến email của bạn' });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ success: false, message: 'Gửi OTP thất bại' });
+  }
+};
+
+// Xác thực OTP
+export const verifyOtp = async (req, res) => {
+  try {
+    const donorId = req.donor.id;
+    const { otpCode } = req.body;
+
+    const otpRecord = await OTP.findOne({ donorId, code: otpCode });
+    if (!otpRecord) {
+      return res.status(400).json({ success: false, message: 'Mã OTP không hợp lệ' });
+    }
+    if (otpRecord.expiresAt < new Date()) {
+      await OTP.deleteOne({ _id: otpRecord._id });
+      return res.status(400).json({ success: false, message: 'Mã OTP đã hết hạn' });
+    }
+
+    // Xóa OTP sau khi xác thực thành công
+    await OTP.deleteOne({ _id: otpRecord._id });
+
+    // Lưu trạng thái xác thực vào session hoặc token tạm thời (tuỳ chọn)
+    // Ví dụ: tạo JWT ngắn hạn hoặc dùng Redis. Ở đây ta chỉ cần trả về thành công,
+    // frontend sẽ cho phép gọi tiếp API tạo appointment.
+    res.json({ success: true, message: 'Xác thực thành công' });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi xác thực OTP' });
   }
 };
