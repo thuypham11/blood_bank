@@ -92,7 +92,7 @@ const donorSchema = new mongoose.Schema(
 				bloodUnitId: { type: mongoose.Schema.Types.ObjectId, ref: "BloodUnit" },
 			},
 		],
-
+birthDate: { type: Date },
 		idCard: {
   number: { type: String, unique: true, sparse: true },      // Số CCCD
   fullName: { type: String },

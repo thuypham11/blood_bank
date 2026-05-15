@@ -112,6 +112,7 @@ const DonorProfile = () => {
         phone: donorData.phone || "",
         age: donorData.age || "",
         gender: normalizedGender,
+		birthDate: donorData.birthDate ? new Date(donorData.birthDate).toISOString().split('T')[0] : "",
         weight: donorData.weight || "",
         bloodGroup: donorData.bloodGroup || "",
         address: {
@@ -419,7 +420,7 @@ const DonorProfile = () => {
                   {/* Full name */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Họ Và Tên</label>
-                    <input type="text" name="fullName" value={formData.fullName} onChange={handleChange} disabled={!isEditing}
+                    <input type="text" name="fullName" value={formData.fullName} onChange={handleChange} disabled={donor?.isIdVerified || !isEditing}
                       className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors.fullName ? "border-red-500" : ""}`} />
                     {errors.fullName && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.fullName)}</p>}
                   </div>

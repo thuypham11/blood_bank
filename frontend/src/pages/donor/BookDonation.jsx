@@ -6,6 +6,7 @@ import {
   Heart, AlertCircle, ChevronRight, Filter, Search, Building2
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import OtpModal from "../../components/OtpModal"; // thêm import
 
 const BookDonation = () => {
   const [camps, setCamps] = useState([]);
@@ -17,28 +18,37 @@ const BookDonation = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCity, setFilterCity] = useState("all");
+  const [donorEmail, setDonorEmail] = useState("");
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [pendingAppointmentData, setPendingAppointmentData] = useState(null);
   
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
+
+  // Kiểm tra xác thực CCCD
   useEffect(() => {
-  const checkVerification = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/donor/profile', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.donor && !data.donor.isIdVerified) {
-        toast.error('Bạn cần xác thực CCCD trước khi đặt lịch hiến máu');
-        navigate('/donor/profile');
+    const checkVerification = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/donor/profile', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.donor && !data.donor.isIdVerified) {
+          toast.error('Bạn cần xác thực CCCD trước khi đặt lịch hiến máu');
+          navigate('/donor/profile');
+        }
+        if (data.donor && data.donor.email) {
+          setDonorEmail(data.donor.email);
+        }
+      } catch (error) {
+        console.error(error);
       }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-  checkVerification();
-}, [navigate]);
-  // Lấy danh sách điểm hiến máu từ database
+    };
+    checkVerification();
+  }, [navigate]);
+
+  // Lấy danh sách camps
   const fetchCamps = async () => {
     try {
       setLoading(true);
@@ -55,7 +65,6 @@ const BookDonation = () => {
       console.log("✅ Dữ liệu nhận được:", data);
       
       if (data.success) {
-        // Kiểm tra cấu trúc dữ liệu
         let campsData = [];
         if (data.data && data.data.camps) {
           campsData = data.data.camps;
@@ -88,10 +97,8 @@ const BookDonation = () => {
     fetchCamps();
   }, []);
 
-  // Lấy danh sách thành phố duy nhất để lọc
   const cities = [...new Set(camps.map(camp => camp.location?.city).filter(Boolean))];
 
-  // Lọc danh sách theo tìm kiếm và thành phố
   const filteredCamps = camps.filter(camp => {
     const matchesSearch = !searchTerm || 
       camp.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -103,27 +110,52 @@ const BookDonation = () => {
     return matchesSearch && matchesCity;
   });
 
-  // Đặt lịch hiến máu
-  const handleBook = async () => {
-    if (!selectedCamp || !selectedDate || !selectedTime) {
-      toast.error("Vui lòng chọn đầy đủ thông tin");
+  // Khi nhấn nút "Xác nhận đăng ký" trong confirm modal, thay vì gọi API appointment ngay, ta lưu data và mở OTP modal
+  const handleProceedToBook = async () => {
+  if (!selectedCamp || !selectedDate || !selectedTime) {
+    toast.error("Vui lòng chọn đầy đủ thông tin");
+    return;
+  }
+  const appointmentData = {
+    campId: selectedCamp._id,
+    appointmentDate: selectedDate,
+    appointmentTime: selectedTime
+  };
+  
+  // Gọi API kiểm tra điều kiện trước khi gửi OTP
+  try {
+    const checkRes = await fetch("http://localhost:5000/api/donor/check-appointment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(appointmentData)
+    });
+    const checkData = await checkRes.json();
+    if (!checkRes.ok) {
+      toast.error(checkData.message || "Không thể đặt lịch, vui lòng kiểm tra lại");
       return;
     }
+    // Nếu ok, lưu data và mở OTP modal
+    setPendingAppointmentData(appointmentData);
+    setShowOtpModal(true);
+  } catch (error) {
+    toast.error("Lỗi kiểm tra điều kiện");
+  }
+};
 
+  // Sau khi OTP xác thực thành công, gọi API tạo appointment
+  const handleOtpVerified = async () => {
     setIsSubmitting(true);
     try {
-      // Gọi API tạo appointment (sẽ implement sau)
       const res = await fetch("http://localhost:5000/api/donor/appointments", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({
-          campId: selectedCamp._id,
-          appointmentDate: selectedDate,
-          appointmentTime: selectedTime
-        })
+        body: JSON.stringify(pendingAppointmentData)
       });
 
       const data = await res.json();
@@ -142,6 +174,8 @@ const BookDonation = () => {
       toast.error("Lỗi kết nối, vui lòng thử lại");
     } finally {
       setIsSubmitting(false);
+      setShowOtpModal(false);
+      setPendingAppointmentData(null);
     }
   };
 
@@ -410,27 +444,26 @@ const BookDonation = () => {
                   Quay lại
                 </button>
                 <button
-                  onClick={handleBook}
-                  disabled={isSubmitting || !selectedDate || !selectedTime}
+                  onClick={handleProceedToBook}
+                  disabled={!selectedDate || !selectedTime}
                   className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Đang xử lý...
-                    </>
-                  ) : (
-                    <>
-                      <Heart className="w-4 h-4" />
-                      Xác nhận đăng ký
-                    </>
-                  )}
+                  <Heart className="w-4 h-4" />
+                  Xác nhận đăng ký
                 </button>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* OTP Modal */}
+      <OtpModal
+        isOpen={showOtpModal}
+        onClose={() => setShowOtpModal(false)}
+        onVerified={handleOtpVerified}
+        email={donorEmail}
+      />
     </div>
   );
 };

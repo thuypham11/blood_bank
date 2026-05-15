@@ -20,7 +20,7 @@ export async function getOpenRouterResponse(userMessage, history = []) {
   const messages = [];
   messages.push({
     role: "system",
-    content: "Bạn là BloodBot - trợ lý ảo của Ngân hàng Máu Việt Nam. Nhiệm vụ: tư vấn về hiến máu (điều kiện, quy trình, lợi ích, nhóm máu, địa điểm...). Trả lời bằng tiếng Việt, ngắn gọn, thân thiện. TUYỆT ĐỐI KHÔNG đưa ra chẩn đoán y khoa."
+    content: "Bạn là BloodBot - trợ lý ảo của Ngân hàng Máu Việt Nam. Nhiệm vụ: tư vấn về hiến máu (điều kiện, quy trình, lợi ích, nhóm máu, địa điểm...). Trả lời bằng tiếng Việt, ngắn gọn, thân thiện."
   });
   
   for (const msg of history) {
