@@ -1,109 +1,105 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { toast } from 'react-hot-toast';
 
-const HealthDeclarationForm = ({ appointmentId, onSuccess, onClose }) => {
+const HealthDeclarationForm = ({ appointmentId, onSuccess }) => {
   const [answers, setAnswers] = useState({
-    usedStimulants: false,
-    usedCannabis: false,
-    usedCocaine: false,
-    usedHeroin: false,
-    usedCorticoids: false,
-    hasFever: false,
-    hasCough: false,
-    hasInfection: false,
-    hasSkinDisease: false,
-    hasAllergy: false
+    // Phần 1: Tiền sử
+    previousDonation: false,
+    chronicDiseases: false,
+    weightLoss: false,
+    lymphNodes: false,
+    acupuncture: false,
+    tattoo: false,
+    bloodTransfusion: false,
+    drugUse: false,
+    unsafeSex: false,
+    sameSex: false,
+    vaccine: false,
+    vaccineName: '',
+    epidemicArea: false,
+    // Phần 2: 1 tuần gần đây
+    flu: false,
+    antibiotics: false,
+    doctorVisit: false,
+    // Phần 3: Phụ nữ
+    pregnant: false,
   });
   const [loading, setLoading] = useState(false);
-  const [qrCode, setQrCode] = useState(null);
 
-  const handleSubmit = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await axios.post('/api/donor/health-declaration', {
-        appointmentId,
-        answers
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.data.success) {
-        setQrCode(res.data.qrCode);
-        if (onSuccess) onSuccess(res.data);
-      } else {
-        alert(res.data.message);
-      }
-    } catch (err) {
-      alert('Lỗi gửi khai báo: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setAnswers(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
-  if (qrCode) {
-    return (
-      <div className="text-center p-4">
-        <h3 className="font-bold text-lg mb-2">Mã QR khai báo y tế</h3>
-        <img src={qrCode} alt="QR Code" className="mx-auto w-48 h-48 border rounded-lg" />
-        <p className="mt-2 text-sm text-gray-600">Xuất trình mã này cho nhân viên tại điểm hiến máu</p>
-        <p className="text-xs text-gray-500">Mã có hiệu lực trong 30 phút</p>
-        <button onClick={onClose} className="mt-3 px-4 py-2 bg-gray-200 rounded">Đóng</button>
-      </div>
-    );
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  try {
+    const token = localStorage.getItem('token');
+    await axios.post('/api/donor/health-declaration', {
+      appointmentId,
+      answers
+    }, { headers: { Authorization: `Bearer ${token}` } });
+    alert('Khai báo y tế thành công! Vui lòng chờ nhân viên gọi tên.');
+    if (onSuccess) onSuccess();
+  } catch (error) {
+    alert(error.response?.data?.message || 'Lỗi gửi khai báo');
+  } finally {
+    setLoading(false);
   }
+};
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 max-w-md mx-auto space-y-4">
-      <h2 className="text-xl font-bold text-center">Phiếu khai báo sức khỏe</h2>
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.usedStimulants} onChange={e => setAnswers({...answers, usedStimulants: e.target.checked})} />
-          Bạn có sử dụng chất kích thích không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.usedCannabis} onChange={e => setAnswers({...answers, usedCannabis: e.target.checked})} />
-          Bạn có sử dụng cần sa không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.usedCocaine} onChange={e => setAnswers({...answers, usedCocaine: e.target.checked})} />
-          Bạn có sử dụng cocaine không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.usedHeroin} onChange={e => setAnswers({...answers, usedHeroin: e.target.checked})} />
-          Bạn có sử dụng heroin không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.usedCorticoids} onChange={e => setAnswers({...answers, usedCorticoids: e.target.checked})} />
-          Bạn có đang dùng corticoid không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.hasFever} onChange={e => setAnswers({...answers, hasFever: e.target.checked})} />
-          Bạn có sốt không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.hasCough} onChange={e => setAnswers({...answers, hasCough: e.target.checked})} />
-          Bạn có ho không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.hasInfection} onChange={e => setAnswers({...answers, hasInfection: e.target.checked})} />
-          Bạn có đang bị nhiễm trùng không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.hasSkinDisease} onChange={e => setAnswers({...answers, hasSkinDisease: e.target.checked})} />
-          Bạn có bệnh ngoài da không?
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={answers.hasAllergy} onChange={e => setAnswers({...answers, hasAllergy: e.target.checked})} />
-          Bạn có dị ứng gì không?
-        </label>
-      </div>
-      <button
-        onClick={handleSubmit}
-        disabled={loading}
-        className="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
-      >
-        {loading ? 'Đang xử lý...' : 'Gửi khai báo và nhận mã QR'}
-      </button>
+    <div className="bg-white rounded-2xl shadow-xl max-w-4xl mx-auto p-6 max-h-[80vh] overflow-y-auto">
+      <h2 className="text-2xl font-bold mb-4">PHIẾU ĐĂNG KÝ HIẾN MÁU TÌNH NGUYỆN</h2>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Phần 1: Tiền sử */}
+        <fieldset className="border p-4 rounded">
+          <legend className="font-semibold px-2">1. Tiền sử</legend>
+          <div className="grid grid-cols-1 gap-2">
+            <label className="flex items-center gap-2"><input type="checkbox" name="previousDonation" checked={answers.previousDonation} onChange={handleChange} /> Đã từng hiến máu trước đây</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="chronicDiseases" checked={answers.chronicDiseases} onChange={handleChange} /> Mắc bệnh mạn tính (tim, gan, thận, huyết áp, hen, lao, ung thư...)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="weightLoss" checked={answers.weightLoss} onChange={handleChange} /> Sút cân ≥4kg không rõ nguyên nhân trong 6 tháng</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="lymphNodes" checked={answers.lymphNodes} onChange={handleChange} /> Nổi hạch kéo dài</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="acupuncture" checked={answers.acupuncture} onChange={handleChange} /> Châm cứu, phẫu thuật trong 6 tháng</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="tattoo" checked={answers.tattoo} onChange={handleChange} /> Xăm mình, xỏ khuyên qua da</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="bloodTransfusion" checked={answers.bloodTransfusion} onChange={handleChange} /> Được truyền máu</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="drugUse" checked={answers.drugUse} onChange={handleChange} /> Sử dụng ma túy, tiêm chích</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="unsafeSex" checked={answers.unsafeSex} onChange={handleChange} /> Quan hệ tình dục với người nhiễm HIV/nguy cơ cao</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="sameSex" checked={answers.sameSex} onChange={handleChange} /> Quan hệ tình dục đồng giới</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="vaccine" checked={answers.vaccine} onChange={handleChange} /> Tiêm vắc xin (nếu có, ghi rõ)</label>
+            {answers.vaccine && <input type="text" name="vaccineName" placeholder="Loại vắc xin" value={answers.vaccineName} onChange={handleChange} className="border p-2 rounded w-full mt-1" />}
+            <label className="flex items-center gap-2"><input type="checkbox" name="epidemicArea" checked={answers.epidemicArea} onChange={handleChange} /> Sống trong vùng dịch</label>
+          </div>
+        </fieldset>
+
+        {/* Phần 2: Trong 1 tuần gần đây */}
+        <fieldset className="border p-4 rounded">
+          <legend className="font-semibold px-2">2. Trong 1 tuần gần đây</legend>
+          <div className="grid grid-cols-1 gap-2">
+            <label><input type="checkbox" name="flu" checked={answers.flu} onChange={handleChange} /> Bị cúm, ho, sốt</label>
+            <label><input type="checkbox" name="antibiotics" checked={answers.antibiotics} onChange={handleChange} /> Dùng kháng sinh, aspirin, corticoid</label>
+            <label><input type="checkbox" name="doctorVisit" checked={answers.doctorVisit} onChange={handleChange} /> Đi khám bác sĩ, xét nghiệm, chữa răng</label>
+          </div>
+        </fieldset>
+
+        {/* Phần 3: Dành cho phụ nữ */}
+        <fieldset className="border p-4 rounded">
+          <legend className="font-semibold px-2">3. Dành cho phụ nữ</legend>
+          <label><input type="checkbox" name="pregnant" checked={answers.pregnant} onChange={handleChange} /> Đang có thai hoặc nuôi con dưới 12 tháng</label>
+        </fieldset>
+
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={() => window.history.back()} className="px-4 py-2 border rounded">Quay lại</button>
+          <button type="submit" disabled={loading} className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-50">
+            {loading ? 'Đang gửi...' : 'Gửi khai báo'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

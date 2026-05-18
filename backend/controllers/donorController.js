@@ -46,37 +46,38 @@ export const getDonorProfile = async (req, res) => {
     }
 
     const donorProfile = {
-      _id: donor._id,
-      fullName: donor.fullName,
-      email: donor.email,
-      phone: donor.phone,
-      bloodGroup: donor.bloodGroup,
-      age: donor.age,
-      gender: donor.gender,
-      weight: donor.weight,
-      address: donor.address,
-      totalDonations,
-      lastDonationDate: lastDonation,
-      nextEligibleDate,
-      eligibleToDonate: isEligible && donor.eligibleToDonate,
-      isIdVerified: donor.isIdVerified || false,
-      idCard: donor.idCard || null,
-      donationHistory: donor.donationHistory.map((don) => ({
-        id: don._id,
-        donationDate: don.donationDate,
-        facility: don.facility?.facilityName || "N/A",
-        city: don.facility?.address?.city,
-        state: don.facility?.address?.state,
-        bloodGroup: don.bloodGroup,
-        quantity: don.quantity,
-        remarks: don.remarks,
-        verified: don.verified,
-        birthDate: donor.birthDate,
-isIdVerified: donor.isIdVerified,
-      })),
-      createdAt: donor.createdAt,
-      updatedAt: donor.updatedAt,
-    };
+  _id: donor._id,
+  fullName: donor.fullName,
+  email: donor.email,
+  phone: donor.phone,
+  bloodGroup: donor.bloodGroup,
+  age: donor.age,
+  gender: donor.gender,
+  weight: donor.weight,
+  address: donor.address,
+  totalDonations,
+  lastDonationDate: lastDonation,
+  nextEligibleDate,
+  eligibleToDonate: isEligible && donor.eligibleToDonate,
+  // ✅ Các trường bổ sung
+  birthDate: donor.birthDate,
+  isIdVerified: donor.isIdVerified || false,
+  idCard: donor.idCard || null,
+  permanentAddress: donor.permanentAddress || null,
+  donationHistory: donor.donationHistory.map((don) => ({
+    id: don._id,
+    donationDate: don.donationDate,
+    facility: don.facility?.facilityName || "N/A",
+    city: don.facility?.address?.city,
+    state: don.facility?.address?.state,
+    bloodGroup: don.bloodGroup,
+    quantity: don.quantity,
+    remarks: don.remarks,
+    verified: don.verified,
+  })),
+  createdAt: donor.createdAt,
+  updatedAt: donor.updatedAt,
+};
     res.status(200).json({ donor: donorProfile });
   } catch (error) {
     console.error("❌ Error fetching donor profile:", error);
@@ -168,32 +169,39 @@ export const verifyAndSaveIdCard = async (req, res) => {
       return res.status(400).json({ success: false, message: "Thiếu thông tin CCCD" });
     }
 
-    // Kiểm tra trùng số CCCD
-    const existing = await Donor.findOne({ "idCard.number": idCardData.number, _id: { $ne: donorId } });
+    // Kiểm tra trùng
+    const existing = await Donor.findOne({
+      "idCard.number": idCardData.number,
+      _id: { $ne: donorId }
+    });
     if (existing) {
       return res.status(400).json({ success: false, message: "Số CCCD này đã được đăng ký bởi người khác" });
     }
 
     const parseDate = (dateStr) => (dateStr ? new Date(dateStr) : null);
 
-    // Cập nhật donor: ghi đè thông tin cá nhân từ CCCD
+    // Chuyển đổi giới tính từ "Nam" -> "Male", "Nữ" -> "Female"
+    let genderEnum = "";
+    if (idCardData.gender === "Nam") genderEnum = "Male";
+    else if (idCardData.gender === "Nữ") genderEnum = "Female";
+
     const updatedDonor = await Donor.findByIdAndUpdate(
       donorId,
       {
         fullName: idCardData.fullName,
-        gender: idCardData.gender,
+        gender: genderEnum, // cập nhật donor.gender
         birthDate: parseDate(idCardData.birthDate),
-        address: {
+        permanentAddress: {
           street: idCardData.address || "",
-          city: "", // có thể để trống hoặc giữ nguyên cũ, tuỳ logic
-          state: "",
+          city: idCardData.home?.split(",")[1]?.trim() || "",
+          state: idCardData.home?.split(",")[2]?.trim() || "",
           pincode: "",
         },
         idCard: {
           number: idCardData.number,
           fullName: idCardData.fullName,
           birthDate: parseDate(idCardData.birthDate),
-          gender: idCardData.gender,
+          gender: idCardData.gender, // lưu "Nam"/"Nữ" gốc để hiển thị
           home: idCardData.home,
           address: idCardData.address,
           issueDate: parseDate(idCardData.issueDate),
@@ -207,7 +215,7 @@ export const verifyAndSaveIdCard = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Xác thực CCCD thành công! Thông tin cá nhân đã được cập nhật.",
+      message: "Xác thực CCCD thành công!",
       donor: updatedDonor,
     });
   } catch (error) {
@@ -661,5 +669,51 @@ export const verifyOtp = async (req, res) => {
   } catch (error) {
     console.error('Verify OTP error:', error);
     res.status(500).json({ success: false, message: 'Lỗi xác thực OTP' });
+  }
+};
+
+// Helper tính khoảng cách (Haversine)
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3; // mét
+  const φ1 = lat1 * Math.PI/180;
+  const φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+export const checkLocationAndDate = async (req, res) => {
+  try {
+    const donorId = req.donor.id;
+    const { appointmentId, latitude, longitude } = req.body;
+    const appointment = await DonationAppointment.findById(appointmentId).populate('camp');
+    if (!appointment) return res.status(404).json({ success: false, message: 'Lịch hẹn không tồn tại' });
+    if (appointment.donor.toString() !== donorId) return res.status(403).json({ success: false, message: 'Không phải lịch hẹn của bạn' });
+
+    // Kiểm tra ngày
+    const today = new Date();
+    const appointmentDate = new Date(appointment.appointmentDate);
+    if (today.toDateString() !== appointmentDate.toDateString()) {
+      return res.status(400).json({ success: false, message: 'Hôm nay không phải ngày hiến máu của bạn' });
+    }
+
+    // Kiểm tra vị trí (bán kính 500m)
+    const camp = appointment.camp;
+    if (!camp.location?.coordinates || typeof camp.location.coordinates.lat !== 'number') {
+      return res.status(500).json({ success: false, message: 'Điểm hiến máu chưa được cấu hình tọa độ' });
+    }
+    const distance = getDistance(latitude, longitude, camp.location.coordinates.lat, camp.location.coordinates.lng);
+    if (distance > 500) {
+      return res.status(400).json({ success: false, message: `Bạn chưa đến đúng điểm hiến máu (cách ${Math.round(distance)}m, yêu cầu trong bán kính 500m)` });
+    }
+
+    res.json({ success: true, message: 'Đã đến đúng địa điểm, có thể khai báo y tế' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };

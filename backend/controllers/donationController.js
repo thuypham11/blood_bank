@@ -267,3 +267,49 @@ export const submitHealthDeclaration = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// Helper tính khoảng cách (Haversine)
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3; // mét
+  const φ1 = lat1 * Math.PI/180;
+  const φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+export const checkLocationAndDate = async (req, res) => {
+  try {
+    const donorId = req.donor.id;
+    const { appointmentId, latitude, longitude } = req.body;
+    const appointment = await DonationAppointment.findById(appointmentId).populate('camp');
+    if (!appointment) return res.status(404).json({ success: false, message: 'Lịch hẹn không tồn tại' });
+    if (appointment.donor.toString() !== donorId) return res.status(403).json({ success: false, message: 'Không phải lịch hẹn của bạn' });
+
+    // Kiểm tra ngày
+    const today = new Date();
+    const appointmentDate = new Date(appointment.appointmentDate);
+    if (today.toDateString() !== appointmentDate.toDateString()) {
+      return res.status(400).json({ success: false, message: 'Hôm nay không phải ngày hiến máu của bạn' });
+    }
+
+    // Kiểm tra vị trí (bán kính 500m)
+    const camp = appointment.camp;
+    if (!camp.location?.coordinates) {
+      return res.status(500).json({ success: false, message: 'Điểm hiến máu chưa được cấu hình tọa độ' });
+    }
+    const distance = getDistance(latitude, longitude, camp.location.coordinates.lat, camp.location.coordinates.lng);
+    if (distance > 2000) {
+      return res.status(400).json({ success: false, message: `Bạn chưa đến đúng điểm hiến máu (cách ${Math.round(distance)}m, yêu cầu trong bán kính 500m)` });
+    }
+
+    res.json({ success: true, message: 'Đã đến đúng địa điểm, có thể khai báo y tế' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
