@@ -22,9 +22,11 @@ import {
 } from "../controllers/donationController.js";
 import Donor from "../models/donorModel.js";
 import axios from "axios";
+import { checkLocationAndDate } from '../controllers/donationController.js';
 import { uploadIdCard, verifyAndSaveIdCard } from "../controllers/donorController.js";
 import { submitHealthDeclaration } from '../controllers/donationController.js';
 const router = express.Router();
+router.post('/check-location', protectDonor, checkLocationAndDate);
 router.post("/check-appointment", protectDonor, checkAppointmentEligibility);
 router.post('/send-otp', protectDonor, sendOtp);
 router.post('/verify-otp', protectDonor, verifyOtp);

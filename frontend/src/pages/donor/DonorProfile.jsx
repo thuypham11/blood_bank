@@ -1,8 +1,8 @@
+// frontend/src/pages/donor/DonorProfile.jsx
 import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast, Toaster } from "react-hot-toast";
 import IdCardVerification from "../../components/IdCardVerification";
-
 import {
   Loader2,
   Save,
@@ -18,7 +18,6 @@ import {
   Calendar,
   Award,
   AlertCircle,
-  RefreshCw,
 } from "lucide-react";
 
 const API_BASE_URL = "http://localhost:5000/api";
@@ -50,8 +49,10 @@ const validateField = (name, value) => {
   const strValue = value !== undefined && value !== null ? String(value) : "";
   if (rules.required && !strValue.trim()) return "Trường này là bắt buộc";
   if (!strValue.trim() && !rules.required) return null;
-  if (rules.minLength && strValue.trim().length < rules.minLength) return `Tối thiểu ${rules.minLength} ký tự`;
-  if (rules.maxLength && strValue.trim().length > rules.maxLength) return `Không được vượt quá ${rules.maxLength} ký tự`;
+  if (rules.minLength && strValue.trim().length < rules.minLength)
+    return `Tối thiểu ${rules.minLength} ký tự`;
+  if (rules.maxLength && strValue.trim().length > rules.maxLength)
+    return `Không được vượt quá ${rules.maxLength} ký tự`;
   if (rules.min && Number(strValue) < rules.min) {
     if (name === "age") return "Phải từ 18 tuổi trở lên để hiến máu";
     if (name === "weight") return "Cân nặng tối thiểu để hiến máu là 45kg";
@@ -88,6 +89,7 @@ const DonorProfile = () => {
     bloodGroup: "",
     address: { street: "", city: "", state: "", pincode: "" },
     password: "",
+    birthDate: "",
   });
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -95,6 +97,7 @@ const DonorProfile = () => {
   const [errors, setErrors] = useState({});
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Lấy thông tin hồ sơ
   const fetchProfile = useCallback(async () => {
     try {
       setLoading(true);
@@ -105,24 +108,38 @@ const DonorProfile = () => {
       });
       const donorData = data?.donor || data;
       if (!donorData) throw new Error("Không nhận được dữ liệu hồ sơ từ server.");
+
       const rawGender = donorData.gender || "";
       const normalizedGender = rawGender.charAt(0).toUpperCase() + rawGender.slice(1).toLowerCase();
+
+      // Địa chỉ tạm trú (cho phép sửa)
+      const tempAddress = {
+        street: donorData.address?.street || "",
+        city: donorData.address?.city || "",
+        state: donorData.address?.state || "",
+        pincode: donorData.address?.pincode || "",
+      };
+
+      // Ngày sinh: ưu tiên từ donorData.birthDate, nếu không thì từ idCard.birthDate
+      let birthDateStr = "";
+      if (donorData.birthDate) {
+        birthDateStr = new Date(donorData.birthDate).toISOString().split("T")[0];
+      } else if (donorData.idCard?.birthDate) {
+        birthDateStr = new Date(donorData.idCard.birthDate).toISOString().split("T")[0];
+      }
+
       setFormData({
         fullName: donorData.fullName || "",
         phone: donorData.phone || "",
         age: donorData.age || "",
         gender: normalizedGender,
-		birthDate: donorData.birthDate ? new Date(donorData.birthDate).toISOString().split('T')[0] : "",
         weight: donorData.weight || "",
         bloodGroup: donorData.bloodGroup || "",
-        address: {
-          street: donorData.address?.street || "",
-          city: donorData.address?.city || "",
-          state: donorData.address?.state || "",
-          pincode: donorData.address?.pincode || "",
-        },
+        address: tempAddress,
+        birthDate: birthDateStr,
         password: "",
       });
+
       setDonor({
         ...donorData,
         gender: normalizedGender,
@@ -130,6 +147,8 @@ const DonorProfile = () => {
         status: donorData.status || "active",
         donorId: donorData._id || donorData.donorId,
         isIdVerified: donorData.isIdVerified || false,
+        idCard: donorData.idCard || null,
+        permanentAddress: donorData.permanentAddress || null,
       });
     } catch (error) {
       console.error("Lỗi tải hồ sơ:", error);
@@ -155,15 +174,18 @@ const DonorProfile = () => {
   }, [refreshTrigger, fetchProfile]);
 
   const handleIdVerified = () => {
-    setRefreshTrigger(prev => prev + 1);
-    toast.success("Xác thực CCCD thành công! Bạn có thể đặt lịch hiến máu.");
+    setRefreshTrigger((prev) => prev + 1);
+    toast.success("Xác thực CCCD thành công! Thông tin đã được cập nhật.");
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name.startsWith("address.")) {
       const key = name.split(".")[1];
-      setFormData((prev) => ({ ...prev, address: { ...prev.address, [key]: value } }));
+      setFormData((prev) => ({
+        ...prev,
+        address: { ...prev.address, [key]: value },
+      }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
@@ -216,28 +238,7 @@ const DonorProfile = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (data.success || data.donor || data.message === "Profile updated successfully") {
-        const updatedDonor = data.donor || { ...donor, ...payload };
-        setDonor((prev) => ({
-          ...prev,
-          ...updatedDonor,
-          donorId: updatedDonor._id || prev?.donorId,
-          status: updatedDonor.status || prev?.status,
-        }));
-        setFormData({
-          fullName: updatedDonor.fullName || payload.fullName || "",
-          phone: updatedDonor.phone || payload.phone || "",
-          age: updatedDonor.age || payload.age || "",
-          gender: (updatedDonor.gender || payload.gender || "").charAt(0).toUpperCase() + (updatedDonor.gender || payload.gender || "").slice(1).toLowerCase(),
-          weight: updatedDonor.weight || payload.weight || "",
-          bloodGroup: updatedDonor.bloodGroup || payload.bloodGroup || "",
-          address: {
-            street: updatedDonor.address?.street || payload.address?.street || "",
-            city: updatedDonor.address?.city || payload.address?.city || "",
-            state: updatedDonor.address?.state || payload.address?.state || "",
-            pincode: updatedDonor.address?.pincode || payload.address?.pincode || "",
-          },
-          password: "",
-        });
+        await fetchProfile(); // refresh dữ liệu
         setIsEditing(false);
         setErrors({});
         toast.success("Cập nhật hồ sơ thành công! 🎉");
@@ -292,6 +293,7 @@ const DonorProfile = () => {
           state: donor.address?.state || "",
           pincode: donor.address?.pincode || "",
         },
+        birthDate: donor.birthDate ? new Date(donor.birthDate).toISOString().split("T")[0] : (donor.idCard?.birthDate ? new Date(donor.idCard.birthDate).toISOString().split("T")[0] : ""),
         password: "",
       });
     }
@@ -322,12 +324,7 @@ const DonorProfile = () => {
     );
   }
 
-  const addressFields = [
-    { key: "street", label: "Địa Chỉ Đường", span: true },
-    { key: "city", label: "Quận/Huyện" },
-    { key: "state", label: "Tỉnh/Thành Phố" },
-    { key: "pincode", label: "Mã Bưu Chính (6 số)", type: "text" },
-  ];
+  const isIdVerified = donor.isIdVerified;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
@@ -349,29 +346,35 @@ const DonorProfile = () => {
             <div className="flex gap-3">
               {isEditing ? (
                 <>
-                  <button onClick={handleCancel} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg border border-gray-300"><X size={18} /> Hủy</button>
+                  <button onClick={handleCancel} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg border border-gray-300">
+                    <X size={18} /> Hủy
+                  </button>
                   <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />} Lưu Thay Đổi
                   </button>
                 </>
               ) : (
-                <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg"><Edit3 size={18} /> Chỉnh Sửa Hồ Sơ</button>
+                <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+                  <Edit3 size={18} /> Chỉnh Sửa Hồ Sơ
+                </button>
               )}
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Sidebar */}
+          {/* ========== SIDEBAR ========== */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Status card */}
+            {/* Trạng thái */}
             <div className="bg-white rounded-2xl shadow-lg border border-red-100 p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2"><Award className="w-5 h-5 text-red-600" /> Trạng Thái</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <Award className="w-5 h-5 text-red-600" /> Trạng Thái
+              </h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Trạng Thái</span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${donor.status === "active" ? "bg-green-100 text-green-700" : donor.status === "pending" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>
-                    {donor.status === "active" ? "Hoạt Động" : donor.status === "pending" ? "Chờ Xét Duyệt" : "Không Hoạt Động"}
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${donor.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    {donor.status === "active" ? "Hoạt Động" : "Không Hoạt Động"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -384,8 +387,8 @@ const DonorProfile = () => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Xác thực CCCD</span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${donor.isIdVerified ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                    {donor.isIdVerified ? "Đã xác thực" : "Chưa xác thực"}
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${isIdVerified ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    {isIdVerified ? "Đã xác thực" : "Chưa xác thực"}
                   </span>
                 </div>
                 {donor.lastDonation && (
@@ -397,9 +400,11 @@ const DonorProfile = () => {
               </div>
             </div>
 
-            {/* Quick info card */}
+            {/* Thông tin nhanh */}
             <div className="bg-white rounded-2xl shadow-lg border border-red-100 p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2"><User className="w-5 h-5 text-red-600" /> Thông Tin Nhanh</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <User className="w-5 h-5 text-red-600" /> Thông Tin Nhanh
+              </h3>
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-sm"><Mail className="w-4 h-4 text-red-500" /><span className="text-gray-600 truncate">{donor.email}</span></div>
                 {donor.phone && <div className="flex items-center gap-3 text-sm"><Phone className="w-4 h-4 text-red-500" /><span className="text-gray-600">{donor.phone}</span></div>}
@@ -407,97 +412,246 @@ const DonorProfile = () => {
               </div>
             </div>
 
-            {/* ID Card Verification Component */}
+            {/* Thông tin CCCD (chỉ hiển thị sau khi đã xác thực) */}
+            {isIdVerified && donor.idCard && (
+              <div className="bg-white rounded-2xl shadow-lg border border-red-100 p-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-red-600" /> Thông tin CCCD
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div><span className="font-medium">Số CCCD:</span> {donor.idCard.number}</div>
+                  <div><span className="font-medium">Họ tên trên CCCD:</span> {donor.idCard.fullName}</div>
+                  <div><span className="font-medium">Ngày sinh:</span> {donor.idCard.birthDate ? new Date(donor.idCard.birthDate).toLocaleDateString("vi-VN") : "—"}</div>
+                  <div><span className="font-medium">Giới tính:</span> {donor.idCard.gender || "—"}</div>
+                  <div><span className="font-medium">Quê quán:</span> {donor.idCard.home || "—"}</div>
+                  <div><span className="font-medium">Địa chỉ thường trú:</span> {donor.permanentAddress?.street || "—"}</div>
+                  <div><span className="font-medium">Ngày cấp:</span> {donor.idCard.issueDate ? new Date(donor.idCard.issueDate).toLocaleDateString("vi-VN") : "—"}</div>
+                  <div><span className="font-medium">Ngày hết hạn:</span> {donor.idCard.expiryDate ? new Date(donor.idCard.expiryDate).toLocaleDateString("vi-VN") : "—"}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Component xác thực CCCD */}
             <IdCardVerification donor={donor} onVerified={handleIdVerified} />
           </div>
 
-          {/* Main content - Edit form */}
+          {/* ========== MAIN FORM ========== */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl shadow-lg border border-red-100 p-6">
+              {/* Thông tin cá nhân */}
               <div className="mb-8">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2"><User className="w-5 h-5 text-red-600" /> Thông Tin Cá Nhân</h3>
+                <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <User className="w-5 h-5 text-red-600" /> Thông Tin Cá Nhân
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Full name */}
+                  {/* Họ và tên */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Họ Và Tên</label>
-                    <input type="text" name="fullName" value={formData.fullName} onChange={handleChange} disabled={donor?.isIdVerified || !isEditing}
-                      className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors.fullName ? "border-red-500" : ""}`} />
+                    <input
+                      type="text"
+                      name="fullName"
+                      value={formData.fullName}
+                      onChange={handleChange}
+                      disabled={isIdVerified || !isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors.fullName ? "border-red-500" : ""}`}
+                    />
                     {errors.fullName && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.fullName)}</p>}
                   </div>
-                  {/* Phone */}
+                  {/* Số điện thoại */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Số Điện Thoại</label>
-                    <input type="tel" name="phone" value={formData.phone} onChange={handleChange} disabled={!isEditing}
-                      className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors.phone ? "border-red-500" : ""}`} />
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors.phone ? "border-red-500" : ""}`}
+                    />
                     {errors.phone && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.phone)}</p>}
                   </div>
-                  {/* Age */}
+                  {/* Tuổi */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Tuổi</label>
-                    <input type="number" name="age" value={formData.age} onChange={handleChange} disabled={!isEditing} min="18" max="65"
-                      className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors.age ? "border-red-500" : ""}`} />
+                    <input
+                      type="number"
+                      name="age"
+                      value={formData.age}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      min="18"
+                      max="65"
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors.age ? "border-red-500" : ""}`}
+                    />
                     {errors.age && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.age)}</p>}
                   </div>
-                  {/* Gender */}
+                  {/* Giới tính */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Giới Tính</label>
-                    <select name="gender" value={formData.gender} onChange={handleChange} disabled={!isEditing}
-                      className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors.gender ? "border-red-500" : ""}`}>
+                    <select
+                      name="gender"
+                      value={formData.gender}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors.gender ? "border-red-500" : ""}`}
+                    >
                       <option value="">Chọn Giới Tính</option>
-                      {GENDER_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                      {GENDER_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
                     </select>
                     {errors.gender && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.gender)}</p>}
                   </div>
-                  {/* Weight */}
+                  {/* Cân nặng */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Cân Nặng (kg)</label>
-                    <input type="number" name="weight" value={formData.weight} onChange={handleChange} disabled={!isEditing} min="45" max="200" step="0.1"
-                      className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors.weight ? "border-red-500" : ""}`} />
+                    <input
+                      type="number"
+                      name="weight"
+                      value={formData.weight}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      min="45"
+                      max="200"
+                      step="0.1"
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors.weight ? "border-red-500" : ""}`}
+                    />
                     {errors.weight && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.weight)}</p>}
                   </div>
-                  {/* Blood Group */}
+                  {/* Nhóm máu */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Nhóm Máu</label>
-                    <select name="bloodGroup" value={formData.bloodGroup} onChange={handleChange} disabled={!isEditing}
-                      className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors.bloodGroup ? "border-red-500" : ""}`}>
+                    <select
+                      name="bloodGroup"
+                      value={formData.bloodGroup}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors.bloodGroup ? "border-red-500" : ""}`}
+                    >
                       <option value="">Chọn Nhóm Máu</option>
-                      {BLOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                      {BLOOD_GROUPS.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
                     </select>
                     {errors.bloodGroup && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.bloodGroup)}</p>}
+                  </div>
+                  {/* Ngày sinh (chỉ đọc) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ngày sinh</label>
+                    <input
+                      type="date"
+                      name="birthDate"
+                      value={formData.birthDate}
+                      disabled
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-600"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">(Từ CCCD, không thể sửa)</p>
                   </div>
                 </div>
               </div>
 
-              {/* Address */}
+              {/* Địa chỉ tạm trú (cho phép sửa) */}
               <div className="mb-8">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-red-600" /> Thông Tin Địa Chỉ</h3>
+                <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-red-600" /> Địa chỉ tạm trú
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {addressFields.map(({ key, label, span, type }) => (
-                    <div key={key} className={span ? "md:col-span-2" : ""}>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-                      <input type={type || "text"} name={`address.${key}`} value={formData.address?.[key] || ""} onChange={handleChange} disabled={!isEditing}
-                        className={`w-full px-4 py-3 rounded-xl border ${isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"} ${errors[`address.${key}`] ? "border-red-500" : ""}`} />
-                      {errors[`address.${key}`] && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors[`address.${key}`])}</p>}
-                    </div>
-                  ))}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Địa Chỉ Đường</label>
+                    <input
+                      type="text"
+                      name="address.street"
+                      value={formData.address?.street || ""}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors["address.street"] ? "border-red-500" : ""}`}
+                    />
+                    {errors["address.street"] && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors["address.street"])}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Quận/Huyện</label>
+                    <input
+                      type="text"
+                      name="address.city"
+                      value={formData.address?.city || ""}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors["address.city"] ? "border-red-500" : ""}`}
+                    />
+                    {errors["address.city"] && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors["address.city"])}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tỉnh/Thành Phố</label>
+                    <input
+                      type="text"
+                      name="address.state"
+                      value={formData.address?.state || ""}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors["address.state"] ? "border-red-500" : ""}`}
+                    />
+                    {errors["address.state"] && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors["address.state"])}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Mã Bưu Chính (6 số)</label>
+                    <input
+                      type="text"
+                      name="address.pincode"
+                      value={formData.address?.pincode || ""}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      className={`w-full px-4 py-3 rounded-xl border ${
+                        isEditing ? "border-gray-300 bg-white focus:ring-2 focus:ring-red-500" : "bg-gray-50 border-gray-200"
+                      } ${errors["address.pincode"] ? "border-red-500" : ""}`}
+                    />
+                    {errors["address.pincode"] && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors["address.pincode"])}</p>}
+                  </div>
                 </div>
               </div>
 
               {/* Email (read-only) */}
               <div className="mb-8">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2"><Mail className="w-5 h-5 text-red-600" /> Địa Chỉ Email</h3>
+                <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-red-600" /> Địa Chỉ Email
+                </h3>
                 <input type="email" value={donor.email} disabled className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-600" />
                 <p className="text-xs text-gray-500 mt-2">Email không thể thay đổi</p>
               </div>
 
-              {/* Change password */}
+              {/* Đổi mật khẩu */}
               {isEditing && (
                 <div className="mb-8">
                   <h3 className="text-xl font-semibold text-gray-800 mb-4">Đổi Mật Khẩu</h3>
                   <div className="max-w-md">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Mật Khẩu Mới (không bắt buộc)</label>
-                    <input type="password" name="password" value={formData.password} onChange={handleChange}
-                      className={`w-full px-4 py-3 rounded-xl border border-gray-300 bg-white focus:ring-2 focus:ring-red-500 ${errors.password ? "border-red-500" : ""}`} placeholder="Nhập mật khẩu mới (tối thiểu 8 ký tự)" />
+                    <input
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      className={`w-full px-4 py-3 rounded-xl border border-gray-300 bg-white focus:ring-2 focus:ring-red-500 ${
+                        errors.password ? "border-red-500" : ""
+                      }`}
+                      placeholder="Nhập mật khẩu mới (tối thiểu 8 ký tự)"
+                    />
                     {errors.password && <p className="text-red-500 text-xs mt-2"><AlertCircle size={12} /> {getErrorMsg(errors.password)}</p>}
                     <p className="text-xs text-gray-500 mt-2">Để trống nếu không muốn thay đổi mật khẩu</p>
                   </div>
