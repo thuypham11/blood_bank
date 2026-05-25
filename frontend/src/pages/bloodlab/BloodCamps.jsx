@@ -465,7 +465,7 @@ const BloodCamps = () => {
 	};
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
+		<div className="min-h-screen bg-linear-to-br from-red-50 to-white p-6">
 			<div className="max-w-7xl mx-auto">
 				{/* Tiêu đề với thống kê */}
 				<div className="mb-8">
@@ -832,25 +832,25 @@ const BloodCamps = () => {
 
 										<div className="space-y-2 text-sm text-gray-600">
 											<div className="flex items-center">
-												<Clock size={16} className="mr-2 text-red-500 flex-shrink-0" />
+												<Clock size={16} className="mr-2 text-red-500 shrink-0" />
 												<span>
 													{camp.time.start} - {camp.time.end}
 												</span>
 											</div>
 											<div className="flex items-start">
-												<MapPin size={16} className="mr-2 text-red-500 flex-shrink-0 mt-0.5" />
+												<MapPin size={16} className="mr-2 text-red-500 shrink-0 mt-0.5" />
 												<span className="line-clamp-2">
 													{camp.location.venue}, {camp.location.city}, {camp.location.state} -{" "}
 													{camp.location.pincode}
 												</span>
 											</div>
 											<div className="flex items-center">
-												<Users size={16} className="mr-2 text-red-500 flex-shrink-0" />
+												<Users size={16} className="mr-2 text-red-500 shrink-0" />
 												<span>Dự kiến: {camp.expectedDonors} người hiến</span>
 											</div>
 											{camp.actualDonors > 0 && (
 												<div className="flex items-center text-green-600">
-													<Users size={16} className="mr-2 flex-shrink-0" />
+													<Users size={16} className="mr-2 shrink-0" />
 													<span>Thực tế: {camp.actualDonors} người hiến</span>
 												</div>
 											)}

@@ -87,7 +87,7 @@ function App() {
 				}>
 				<Route index element={<BloodlabDashboard />} />
 				<Route path="inventory" element={<BloodStock />} />
-				<Route path="camps" element={<BloodCamps />} />
+				{/* <Route path="camps" element={<BloodCamps />} /> */}
 				<Route path="profile" element={<LabProfile />} />
 				<Route path="requests" element={<LabManageRequests />} />
 				<Route path="donor" element={<BloodLabDonor />} />

@@ -245,7 +245,7 @@ const LabProfile = () => {
 
 	if (loading && !facility) {
 		return (
-			<div className="min-h-screen bg-gradient-to-br from-red-50 to-white flex items-center justify-center">
+			<div className="min-h-screen bg-linear-to-br from-red-50 to-white flex items-center justify-center">
 				<div className="text-center">
 					<div className="animate-pulse mb-4">
 						<Droplet className="w-12 h-12 text-red-500 mx-auto" />
@@ -259,7 +259,7 @@ const LabProfile = () => {
 
 	if (!facility) {
 		return (
-			<div className="min-h-screen bg-gradient-to-br from-red-50 to-white flex items-center justify-center">
+			<div className="min-h-screen bg-linear-to-br from-red-50 to-white flex items-center justify-center">
 				<div className="text-center bg-white rounded-2xl shadow-lg border border-red-100 p-8">
 					<Droplet className="w-16 h-16 text-red-500 mx-auto mb-4" />
 					<h3 className="text-lg font-semibold text-gray-800 mb-2">Lỗi Hồ Sơ Cơ Sở</h3>
@@ -284,7 +284,7 @@ const LabProfile = () => {
 	};
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
+		<div className="min-h-screen bg-linear-to-br from-red-50 to-white p-6">
 			<Toaster />
 			<div className="max-w-6xl mx-auto">
 				{/* Tiêu đề */}
