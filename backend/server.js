@@ -1,3 +1,5 @@
+import { setDefaultResultOrder } from 'dns';
+setDefaultResultOrder('ipv4first');
 import "dotenv/config";
 console.log("ENV CHECK:", {
   MONGO_URI: process.env.MONGO_URI,
@@ -17,6 +19,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import facilityRoutes from "./routes/facilityRoutes.js";
 import bloodLabRoutes from "./routes/bloodLabRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
+import donationStaffRoutes from './routes/donationStaffRoutes.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -33,7 +36,7 @@ app.use(cors({
 app.options('/{*all}', cors());
 
 app.use(express.json());
-
+app.use('/api/donation-staff', donationStaffRoutes);
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/donor", donorRoutes);
