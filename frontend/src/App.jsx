@@ -18,6 +18,7 @@ import BloodStock from "./pages/bloodlab/BloodStock";
 import LabProfile from "./pages/bloodlab/LabProfile";
 import GetAllFacilities from "./pages/admin/GetAllFacilities";
 import GetAllDonors from "./pages/admin/GetAllDonors";
+import AdminProfile from "./pages/admin/AdminProfile";
 import DonorCampsList from "./pages/donor/DonorCampsList";
 import LabManageRequests from "./pages/bloodlab/LabManageRequests";
 import HospitalRequestBlood from "./pages/hospital/HospitalRequestBlood";
@@ -108,6 +109,7 @@ function App() {
 				<Route path="verification" element={<AdminFacilities />} />
 				<Route path="donors" element={<GetAllDonors />} />
 				<Route path="facilities" element={<GetAllFacilities />} />
+				<Route path="profile" element={<AdminProfile />} />
 			</Route>
 				<Route path="/staff" element={<StaffDashboard />} />
 <Route path="/staff/queue/:campId" element={<StaffQueue />} />

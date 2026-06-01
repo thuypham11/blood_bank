@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
-import { CheckCircle, XCircle, Clock, MapPin, Phone } from "lucide-react";
+import { CheckCircle, XCircle, Clock, MapPin, Phone, Package, Truck } from "lucide-react";
 
 const LabManageRequests = () => {
 	const [requests, setRequests] = useState([]);
@@ -46,11 +46,38 @@ const LabManageRequests = () => {
 		}
 	};
 
+	const handoverSteps = [
+		{ key: "received", label: "Tiếp nhận", next: "preparing", action: "Chuẩn bị máu" },
+		{ key: "preparing", label: "Chuẩn bị", next: "packed", action: "Đóng gói" },
+		{ key: "packed", label: "Đóng gói", next: "shipping", action: "Vận chuyển" },
+		{ key: "shipping", label: "Vận chuyển", next: null, action: "Chờ bệnh viện xác nhận" },
+		{ key: "confirmed", label: "Đã xác nhận", next: null, action: "Hoàn tất" },
+	];
+
+	const getHandoverStep = (status) => handoverSteps.find((step) => step.key === status) || handoverSteps[0];
+
+	const updateHandover = async (id, handoverStatus) => {
+		try {
+			const token = localStorage.getItem("token");
+			await axios.patch(
+				`http://localhost:5000/api/blood-lab/blood/requests/${id}/handover`,
+				{ handoverStatus },
+				{ headers: { Authorization: `Bearer ${token}` } },
+			);
+			toast.success("Đã cập nhật trạng thái bàn giao");
+			loadRequests();
+		} catch (err) {
+			console.error("Lỗi cập nhật bàn giao:", err);
+			toast.error(err.response?.data?.message || "Không thể cập nhật bàn giao");
+		}
+	};
+
 	const getStatusBadge = (status) => {
 		const statusConfig = {
 			pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock, label: "Chờ Xử Lý" },
 			accepted: { color: "bg-green-100 text-green-800", icon: CheckCircle, label: "Đã Chấp Nhận" },
 			rejected: { color: "bg-red-100 text-red-800", icon: XCircle, label: "Đã Từ Chối" },
+			completed: { color: "bg-blue-100 text-blue-800", icon: CheckCircle, label: "Hoàn Tất" },
 		};
 
 		const config = statusConfig[status] || statusConfig.pending;
@@ -135,6 +162,7 @@ const LabManageRequests = () => {
 										<th className="p-4 text-left font-semibold text-gray-700">Nhóm Máu</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Số Đơn Vị</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Trạng Thái</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Bàn Giao</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Ngày Tạo</th>
 										<th className="p-4 text-left font-semibold text-gray-700">Thao Tác</th>
 									</tr>
@@ -170,6 +198,27 @@ const LabManageRequests = () => {
 												<span className="text-sm text-gray-500 ml-1">đơn vị</span>
 											</td>
 											<td className="p-4">{getStatusBadge(req.status)}</td>
+											<td className="p-4 min-w-[170px]">
+												{req.status === "accepted" || req.status === "completed" ? (
+													<div className="space-y-2">
+														<div className="flex items-center gap-2 text-sm text-gray-700">
+															{req.handoverStatus === "shipping" ? <Truck size={16} /> : <Package size={16} />}
+															<span>{getHandoverStep(req.handoverStatus || "received").label}</span>
+														</div>
+														{getHandoverStep(req.handoverStatus || "received").next ? (
+															<button
+																onClick={() => updateHandover(req._id, getHandoverStep(req.handoverStatus || "received").next)}
+																className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium">
+																{getHandoverStep(req.handoverStatus || "received").action}
+															</button>
+														) : (
+															<span className="text-xs text-gray-500">{getHandoverStep(req.handoverStatus || "received").action}</span>
+														)}
+													</div>
+												) : (
+													<span className="text-sm text-gray-400">Chưa bắt đầu</span>
+												)}
+											</td>
 											<td className="p-4 text-sm text-gray-600">
 												{new Date(req.createdAt).toLocaleDateString("vi-VN")}
 												<br />

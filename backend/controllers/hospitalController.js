@@ -3,6 +3,21 @@ import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import Donor from "../models/donorModel.js";
 
+const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
+
+const HANDOVER_LABELS = {
+  requested: "Bệnh viện gửi yêu cầu",
+  received: "Ngân hàng máu tiếp nhận",
+  preparing: "Chuẩn bị máu",
+  packed: "Đóng gói",
+  shipping: "Vận chuyển",
+  confirmed: "Bệnh viện ký, xác nhận",
+  rejected: "Từ chối yêu cầu"
+};
+
+const getBloodGroup = (item) => item.bloodGroup || item.bloodType;
+const getExpiryDate = (item) => item.expiryDate || item.expirationDate;
+
 /* ==============================================================
    HOSPITAL BLOOD REQUEST MANAGEMENT
    ============================================================== */
@@ -51,7 +66,14 @@ export const hospitalRequestBlood = async (req, res) => {
       hospitalId,
       labId,
       bloodType,
-      units
+      units,
+      handoverStatus: "requested",
+      handoverTimeline: [{
+        status: "requested",
+        label: HANDOVER_LABELS.requested,
+        date: new Date(),
+        actor: hospitalId
+      }]
     });
 
     // Add to hospital history
@@ -161,6 +183,149 @@ export const getHospitalStock = async (req, res) => {
       success: false, 
       message: "Failed to fetch hospital stock" 
     });
+  }
+};
+
+export const confirmBloodHandover = async (req, res) => {
+  try {
+    const hospitalId = req.user._id;
+    const { id } = req.params;
+    const request = await BloodRequest.findOne({ _id: id, hospitalId }).populate("labId", "name");
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Blood request not found" });
+    }
+
+    if (request.status !== "accepted" || request.handoverStatus !== "shipping") {
+      return res.status(400).json({
+        success: false,
+        message: "Only blood shipments in transport can be confirmed"
+      });
+    }
+
+    const labStock = await Blood.findOne({
+      bloodLab: request.labId._id,
+      bloodGroup: request.bloodType
+    });
+
+    if (!labStock || labStock.quantity < request.units) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock to complete handover. Available: ${labStock?.quantity || 0} units`
+      });
+    }
+
+    labStock.quantity -= request.units;
+    if (labStock.quantity === 0) {
+      await Blood.findByIdAndDelete(labStock._id);
+    } else {
+      await labStock.save();
+    }
+
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 42);
+
+    const hospitalStock = await Blood.findOne({
+      hospital: hospitalId,
+      bloodGroup: request.bloodType
+    });
+
+    if (hospitalStock) {
+      hospitalStock.quantity += request.units;
+      hospitalStock.expiryDate = expiryDate;
+      await hospitalStock.save();
+    } else {
+      await Blood.create({
+        bloodGroup: request.bloodType,
+        bloodType: request.bloodType,
+        quantity: request.units,
+        expiryDate,
+        hospital: hospitalId
+      });
+    }
+
+    request.status = "completed";
+    request.handoverStatus = "confirmed";
+    request.confirmedAt = new Date();
+    request.handoverTimeline.push({
+      status: "confirmed",
+      label: HANDOVER_LABELS.confirmed,
+      date: new Date(),
+      actor: hospitalId
+    });
+    await request.save();
+
+    await Facility.findByIdAndUpdate(hospitalId, {
+      $push: {
+        history: {
+          eventType: "Stock Update",
+          description: `Confirmed receipt of ${request.units} units of ${request.bloodType} from ${request.labId.name}`,
+          date: new Date(),
+          referenceId: request._id,
+        },
+      },
+    });
+
+    res.json({ success: true, message: "Blood handover confirmed", data: request });
+  } catch (error) {
+    console.error("Confirm Blood Handover Error:", error);
+    res.status(500).json({ success: false, message: "Failed to confirm blood handover" });
+  }
+};
+
+export const getPublicBloodNeeds = async (_req, res) => {
+  try {
+    const [stock, pendingRequests, donors] = await Promise.all([
+      Blood.find({}),
+      BloodRequest.find({ status: { $in: ["pending", "accepted"] } }),
+      Donor.find({}, "bloodGroup")
+    ]);
+
+    const totalDonors = donors.length;
+    const stockByType = BLOOD_TYPES.reduce((acc, type) => ({ ...acc, [type]: 0 }), {});
+    const requestByType = BLOOD_TYPES.reduce((acc, type) => ({ ...acc, [type]: 0 }), {});
+    const donorByType = BLOOD_TYPES.reduce((acc, type) => ({ ...acc, [type]: 0 }), {});
+
+    stock.forEach((item) => {
+      const type = getBloodGroup(item);
+      const expiry = getExpiryDate(item);
+      if (BLOOD_TYPES.includes(type) && (!expiry || new Date(expiry) > new Date())) {
+        stockByType[type] += item.quantity || 0;
+      }
+    });
+
+    pendingRequests.forEach((request) => {
+      if (BLOOD_TYPES.includes(request.bloodType)) {
+        requestByType[request.bloodType] += request.units || 0;
+      }
+    });
+
+    donors.forEach((donor) => {
+      if (BLOOD_TYPES.includes(donor.bloodGroup)) {
+        donorByType[donor.bloodGroup] += 1;
+      }
+    });
+
+    const data = BLOOD_TYPES.map((type) => {
+      const shortage = requestByType[type] - stockByType[type];
+      let need = "Thấp";
+      if (shortage > 10 || (requestByType[type] > 0 && stockByType[type] < 5)) need = "Rất khẩn cấp";
+      else if (shortage > 0 || stockByType[type] < 10) need = "Cao";
+      else if (stockByType[type] < 25 || requestByType[type] > 0) need = "Trung bình";
+
+      return {
+        type,
+        need,
+        donors: totalDonors ? `${Math.round((donorByType[type] / totalDonors) * 100)}%` : "0%",
+        availableUnits: stockByType[type],
+        requestedUnits: requestByType[type]
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Public Blood Needs Error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch public blood needs" });
   }
 };
 

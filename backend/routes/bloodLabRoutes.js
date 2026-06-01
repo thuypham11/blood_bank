@@ -11,8 +11,10 @@ import {
   removeBloodStock,
   getBloodStock,
   updateBloodRequestStatus,
+  updateBloodHandoverStatus,
   getLabBloodRequests,
   getAllLabs,
+  updateBloodScreening,
 } from "../controllers/bloodLabController.js";
 import { protectFacility } from "../middlewares/facilityMiddleware.js";
 import { getRecentDonations, markDonation, searchDonor } from "../controllers/donorController.js";
@@ -39,6 +41,7 @@ router.get("/blood/stock", protectFacility, getBloodStock);
 // Blood request routes for labs
 router.get("/blood/requests", protectFacility, getLabBloodRequests);
 router.put("/blood/requests/:id", protectFacility, updateBloodRequestStatus);
+router.patch("/blood/requests/:id/handover", protectFacility, updateBloodHandoverStatus);
 
 // Get labs for hospitals
 router.get("/labs", protectFacility, getAllLabs);
@@ -47,5 +50,10 @@ router.get("/labs", protectFacility, getAllLabs);
 router.get("/donors/search", protectFacility, searchDonor);
 router.post("/donors/donate/:id", protectFacility, markDonation);
 router.get("/donations/recent", protectFacility, getRecentDonations);
+router.patch(
+  "/blood/:id/screening",
+  protectFacility,
+  updateBloodScreening
+);
 
 export default router;

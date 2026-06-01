@@ -3,10 +3,16 @@ import OpenAI from 'openai';
 import Donor from '../models/donorModel.js';
 import BloodCamp from '../models/bloodCampModel.js';
 
-const openrouter = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1"
-});
+let openrouter = null;
+function getClient() {
+  if (!openrouter) {
+    openrouter = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY || "placeholder",
+      baseURL: "https://openrouter.ai/api/v1",
+    });
+  }
+  return openrouter;
+}
 
 // Danh sách model thử nghiệm (ưu tiên model tốt nhất)
 const MODEL_LIST = [
