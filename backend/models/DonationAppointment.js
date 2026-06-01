@@ -32,6 +32,18 @@ const donationAppointmentSchema = new mongoose.Schema(
     checkInTime: Date,
     notes: String,
     cancellationReason: String,
+    // backend/models/DonationAppointment.js
+// Thêm vào schema
+queueNumber: { type: Number, default: null },
+bedNumber: { type: String, default: null },  // Số giường/bàn hiến máu
+calledAt: { type: Date, default: null },     // Thời gian gọi donor
+calledStatus: { 
+  type: String, 
+  enum: ['pending', 'called', 'in_progress', 'completed'],
+  default: 'pending' 
+},
+completedAt: { type: Date, default: null },
+completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 );

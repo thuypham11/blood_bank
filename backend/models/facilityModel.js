@@ -57,7 +57,7 @@ const facilitySchema = new mongoose.Schema(
 		},
 		facilityType: {
 			type: String,
-			enum: ["hospital", "blood-lab"],
+			enum: ["hospital", "blood-lab", "donation_staff"],
 			required: [true, "Facility type is required"],
 		},
 		role: {
@@ -80,6 +80,11 @@ const facilitySchema = new mongoose.Schema(
 			],
 			default: "Private",
 		},
+		assignedCamp: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "BloodCamp",
+  default: null,
+},
 
 		// 📄 Documents & Verification
 		documents: {

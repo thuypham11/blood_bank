@@ -31,6 +31,9 @@ import Contact from "./components/contact/Contact";
 import DonorDonationHistory from "./pages/donor/DonorDonationHistory";
 import BookDonation from "./pages/donor/BookDonation";
 import MyAppointments from "./pages/donor/MyAppointments";
+import StaffDashboard from './pages/staff/StaffDashboard';
+import StaffQueue from './pages/staff/StaffQueue';
+
 
 function App() {
 	return (
@@ -108,7 +111,8 @@ function App() {
 				<Route path="facilities" element={<GetAllFacilities />} />
 				<Route path="profile" element={<AdminProfile />} />
 			</Route>
-
+				<Route path="/staff" element={<StaffDashboard />} />
+<Route path="/staff/queue/:campId" element={<StaffQueue />} />
 			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
 			<Route path="*" element={<LandingPage />} />
 		</Routes>

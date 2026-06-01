@@ -18,48 +18,44 @@ export function initSocketServer(server) {
 
     let conversationHistory = []; 
 
+// backend/socket/index.js (phần send_message)
 socket.on("send_message", async (data) => {
-    console.log(`📨 Message from ${socket.id}:`, data.message);
+  console.log(`📨 Message from ${socket.id}:`, data.message);
+  
+  // Lấy donorId từ token (đã được lưu trong socket handshake)
+  const donorId = socket.donorId; // Cần set khi kết nối
+  
+  socket.emit("ai_thinking", { isThinking: true });
+  
+  try {
+    // Gọi BloodBot Pro với donor context
+    const aiResponse = await getOpenRouterResponse(data.message, conversationHistory, donorId);
     
-    // Gửi tín hiệu "đang gõ" cho client
-    socket.emit("ai_thinking", { isThinking: true });
+    conversationHistory.push(
+      { role: "user", parts: [{ text: data.message }] },
+      { role: "model", parts: [{ text: aiResponse }] }
+    );
     
-    try {
-        // *** GỌI HÀM MỚI TỪ GEMINI SERVICE ***
-        // Lấy lịch sử hội thoại và tin nhắn hiện tại, gửi đến Gemini
-        const aiResponse = await getOpenRouterResponse(data.message, conversationHistory);
-
-        // Cập nhật lịch sử hội thoại với cặp tin nhắn vừa rồi
-        conversationHistory.push(
-            { role: "user", parts: [{ text: data.message }] },
-            { role: "model", parts: [{ text: aiResponse }] }
-        );
-        
-        // Giới hạn độ dài lịch sử (ví dụ: chỉ giữ 20 tin nhắn gần nhất)
-        if (conversationHistory.length > 20) {
-            conversationHistory = conversationHistory.slice(-20);
-        }
-        
-        // Gửi phản hồi về cho client
-        socket.emit("receive_message", {
-            text: aiResponse,
-            type: "bot",
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (error) {
-    console.error("❌ Gemini error details:", error.message);
-    console.error(error.stack);
-    socket.emit("receive_message", {
-        text: "Xin lỗi, tôi đang gặp sự cố kỹ thuật. Vui lòng thử lại sau.",
-        type: "error",
-        timestamp: new Date().toISOString()
-    });
-} finally {
-        socket.emit("ai_thinking", { isThinking: false });
+    if (conversationHistory.length > 20) {
+      conversationHistory = conversationHistory.slice(-20);
     }
+    
+    socket.emit("receive_message", {
+      text: aiResponse,
+      type: "bot",
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("❌ BloodBot error:", error);
+    socket.emit("receive_message", {
+      text: "Xin lỗi, tôi đang gặp sự cố. Vui lòng thử lại sau! 🙏",
+      type: "error",
+      timestamp: new Date().toISOString()
+    });
+  } finally {
+    socket.emit("ai_thinking", { isThinking: false });
+  }
 });
-
     socket.on("disconnect", () => {
       console.log("🔴 Client disconnected:", socket.id);
     });
