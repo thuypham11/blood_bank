@@ -1,4 +1,4 @@
-import Blood from "../models/bloodModel.js";
+import Blood from "../models/BloodModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import Donor from "../models/donorModel.js";

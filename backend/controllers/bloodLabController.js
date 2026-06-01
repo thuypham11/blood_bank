@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Blood from "../models/bloodModel.js";
+import Blood from "../models/BloodModel.js";
 import BloodCamp from "../models/bloodCampModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";

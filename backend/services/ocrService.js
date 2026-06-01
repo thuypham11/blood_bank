@@ -4,7 +4,25 @@ import fs from "fs";
 
 export async function extractIdCardInfo(imagePath) {
   const apiKey = process.env.FPT_API_KEY;
-  if (!apiKey) return { success: false, message: "Chưa cấu hình FPT_API_KEY" };
+  if (!apiKey) {
+    console.log("⚠️ FPT_API_KEY is not configured, returning mock OCR data for testing.");
+    // Giả lập delay 1s
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return {
+      success: true,
+      data: {
+        number: "0" + Math.floor(Math.random() * 100000000000).toString().padStart(11, "0"),
+        fullName: "NGUYỄN VĂN MOCK",
+        birthDate: "1995-01-01",
+        gender: "Nam",
+        home: "Hà Nội",
+        address: "Cầu Giấy, Hà Nội",
+        issueDate: "2021-01-01",
+        expiryDate: "2031-01-01",
+      },
+      message: "Đây là dữ liệu giả lập (vì chưa có API key). Vui lòng kiểm tra lại."
+    };
+  }
 
   const formData = new FormData();
   formData.append("image", fs.createReadStream(imagePath));

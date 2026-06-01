@@ -11,7 +11,6 @@ import {
   removeBloodStock,
   getBloodStock,
   updateBloodRequestStatus,
-  updateBloodHandoverStatus,
   getLabBloodRequests,
   getAllLabs,
   updateBloodScreening,
@@ -41,7 +40,7 @@ router.get("/blood/stock", protectFacility, getBloodStock);
 // Blood request routes for labs
 router.get("/blood/requests", protectFacility, getLabBloodRequests);
 router.put("/blood/requests/:id", protectFacility, updateBloodRequestStatus);
-router.patch("/blood/requests/:id/handover", protectFacility, updateBloodHandoverStatus);
+// router.patch("/blood/requests/:id/handover", protectFacility, updateBloodHandoverStatus);
 
 // Get labs for hospitals
 router.get("/labs", protectFacility, getAllLabs);
