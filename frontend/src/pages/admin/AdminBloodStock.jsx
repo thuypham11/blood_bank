@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+impor { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import {
   Droplet, Loader2, AlertTriangle, Building, Clock, TestTube, Filter,
@@ -144,7 +144,7 @@ const AdminBloodStock = () => {
               return (
                 <button key={bg} onClick={() => setFilters(f => ({ ...f, bloodGroup: f.bloodGroup === bg ? "" : bg, page: 1 }))}
                   className={`p-4 rounded-xl border text-center transition-all hover:shadow-md ${filters.bloodGroup === bg ? "border-red-500 bg-red-50 shadow-md" :
-                      isLow ? "border-red-200 bg-red-50" : "border-gray-100 bg-white"
+                    isLow ? "border-red-200 bg-red-50" : "border-gray-100 bg-white"
                     }`}
                 >
                   <div className={`text-lg font-bold ${isLow ? "text-red-600" : "text-gray-800"}`}>{bg}</div>
