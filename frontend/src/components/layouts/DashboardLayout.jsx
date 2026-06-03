@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import {
+	import {
 	Bell,
 	LogOut,
 	Menu,
 	X,
 	User,
+	Users, // 🆕 THÊM DÒNG NÀY
 	BarChart3,
 	CheckCircle,
 	Droplet,
@@ -24,11 +25,13 @@ import {
 	Search,
 	Settings,
 	Loader2,
-	Clock,        // 🆕 THÊM DÒNG NÀY
-	MapPin,       // 🆕 THÊM (nếu dùng cho camps)
-	Beaker, 
+	Clock,
+	MapPin,
+	Beaker,
+	FileText, // 🆕 THÊM
 } from "lucide-react";
 import BloodChatbot from "../Chatbot/BloodChatbot";
+
 const DashboardLayout = ({ userRole = "donor" }) => {
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -88,8 +91,8 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 			icon: Droplet,
 			items: [
 				{ path: "/donor", label: "Bảng Điều Khiển", icon: BarChart3, badge: null },
-				{ path: "/donor/book", label: "Đăng Ký Hiến Máu", icon: Calendar },  // 🆕 THÊM
-    { path: "/donor/my-appointments", label: "Lịch Hẹn Của Tôi", icon: Clock }, 
+				{ path: "/donor/book", label: "Đăng Ký Hiến Máu", icon: Calendar },
+				{ path: "/donor/my-appointments", label: "Lịch Hẹn Của Tôi", icon: Clock }, 
 				{ path: "/donor/profile", label: "Hồ Sơ Của Tôi", icon: User, badge: null },
 				{ path: "/donor/history", label: "Lịch Sử Hiến Máu", icon: History, badge: null },
 				{ path: "/donor/camps", label: "Điểm Hiến Máu", icon: Calendar, badge: null },
@@ -134,11 +137,19 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 			shortTitle: "Quản Trị",
 			icon: Shield,
 			items: [
-				{ path: "/admin", label: "Tổng Quan", icon: BarChart3, badge: null },
-				{ path: "/admin/verification", label: "Xác Minh", icon: Shield, badge: null },
-				{ path: "/admin/facilities", label: "Cơ Sở Y Tế", icon: Building, badge: null },
-				{ path: "/admin/donors", label: "Người Hiến Máu", icon: User, badge: null },
-				{ path: "/admin/profile", label: "Hồ Sơ", icon: Settings, badge: null },
+				{ path: "/admin", label: "Tổng Quan", icon: BarChart3, badge: null, requiredRole: "admin" },
+				{ path: "/admin/verification", label: "Xác Minh", icon: Shield, badge: null, requiredRole: "admin" },
+				{ path: "/admin/facilities", label: "Cơ Sở Y Tế", icon: Building, badge: null, requiredRole: "admin" },
+				{ path: "/admin/donors", label: "Người Hiến Máu", icon: User, badge: null, requiredRole: "admin" },
+				{ path: "/admin/blood-stock", label: "Kho Máu", icon: Droplet, badge: null, requiredRole: "admin", permission: "manage_blood_stock" },
+				{ path: "/admin/blood-requests", label: "Yêu Cầu Máu", icon: ClipboardList, badge: null, requiredRole: "admin", permission: "manage_requests" },
+				{ path: "/admin/camps", label: "Chiến Dịch", icon: Calendar, badge: null, requiredRole: "admin" },
+				{ path: "/admin/reports", label: "Thống Kê", icon: FileText, badge: null, requiredRole: "admin", permission: "view_reports" },
+				{ path: "/admin/notifications", label: "Thông Báo", icon: Bell, badge: null, requiredRole: "superadmin" },
+				{ path: "/admin/audit-logs", label: "Nhật Ký", icon: Activity, badge: null, requiredRole: "superadmin" },
+				{ path: "/admin/users", label: "Quản Lý Admin", icon: Users, badge: null, requiredRole: "superadmin" },
+				{ path: "/admin/settings", label: "Cài Đặt", icon: Settings, badge: null, requiredRole: "superadmin" },
+				{ path: "/admin/profile", label: "Hồ Sơ", icon: User, badge: null, requiredRole: "admin" },
 			],
 		},
 	};
@@ -169,7 +180,10 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 							throw new Error("Cấu trúc dữ liệu người dùng không hợp lệ.");
 						}
 
-						if (user.role.toLowerCase() !== userRole.toLowerCase()) {
+						if (
+							user.role.toLowerCase() !== userRole.toLowerCase() &&
+							!(userRole.toLowerCase() === "admin" && user.role.toLowerCase() === "superadmin")
+						) {
 							console.error(`Vai trò không khớp: mong đợi ${userRole}, nhận được ${user.role}`);
 							localStorage.removeItem("token");
 							navigate("/login");
@@ -373,6 +387,14 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 					<nav className={`flex-1 overflow-y-auto ${sidebarCollapsed ? "px-2 py-4" : "p-4"}`}>
 						<div className="flex flex-col gap-1">
 							{config.items.map((item) => {
+								if (item.requiredRole === "superadmin" && userData?.role !== "superadmin") {
+									return null; // Ẩn tab Quản lý Admin nếu không phải superadmin
+								}
+								if (item.permission && userData?.role !== "superadmin") {
+									if (!userData?.permissions || !userData.permissions.includes(item.permission)) {
+										return null; // Ẩn nếu không có quyền
+									}
+								}
 								const Icon = item.icon;
 								const isActive = location.pathname === item.path;
 								return (

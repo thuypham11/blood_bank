@@ -35,7 +35,7 @@ const BookDonation = () => {
         });
         const data = await res.json();
         if (data.donor && !data.donor.isIdVerified) {
-          toast.error('Bạn cần xác thực CCCD trước khi đặt lịch hiến máu');
+          toast.error('Bạn cần xác thực CCCD trước khi đặt lịch hiến máu', { id: 'cccd-error' });
           navigate('/donor/profile');
         }
         if (data.donor && data.donor.email) {

@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const bloodSchema = new mongoose.Schema(
   {
+    barcode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
     bloodGroup: {
       type: String,
       enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
