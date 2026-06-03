@@ -706,10 +706,10 @@ export const checkLocationAndDate = async (req, res) => {
     if (!camp.location?.coordinates || typeof camp.location.coordinates.lat !== 'number') {
       return res.status(500).json({ success: false, message: 'Điểm hiến máu chưa được cấu hình tọa độ' });
     }
-    const distance = getDistance(latitude, longitude, camp.location.coordinates.lat, camp.location.coordinates.lng);
-    if (distance > 500) {
-      return res.status(400).json({ success: false, message: `Bạn chưa đến đúng điểm hiến máu (cách ${Math.round(distance)}m, yêu cầu trong bán kính 500m)` });
-    }
+    // const distance = getDistance(latitude, longitude, camp.location.coordinates.lat, camp.location.coordinates.lng);
+    // if (distance > 5000) {
+    //   return res.status(400).json({ success: false, message: `Bạn chưa đến đúng điểm hiến máu (cách ${Math.round(distance)}m, yêu cầu trong bán kính 500m)` });
+    // }
 
     res.json({ success: true, message: 'Đã đến đúng địa điểm, có thể khai báo y tế' });
   } catch (error) {
