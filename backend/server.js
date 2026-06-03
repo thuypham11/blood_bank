@@ -11,7 +11,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import http from "http";
 import { initSocketServer } from "./socket/index.js";
-
+import staffRoutes from './routes/staffRoutes.js';
 // Import routes
 import authRoutes from "./routes/authRoutes.js";
 import donorRoutes from "./routes/donorRoutes.js";
@@ -44,7 +44,7 @@ app.use("/api/facility", facilityRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/blood-lab", bloodLabRoutes);
 app.use("/api/hospital", hospitalRoutes);
-
+app.use('/api/staff', staffRoutes);
 // Database connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected ✅"))
