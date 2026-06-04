@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Calendar, MapPin, Clock, XCircle, Loader2, QrCode, Eye, AlertCircle } from "lucide-react";
 import { toast } from "react-hot-toast";
 import HealthDeclarationForm from "../../components/HealthDeclarationForm";
-import LocationChecker from "../../components/LocationChecker"; // thêm import
+import LocationChecker from "../../components/LocationChecker";
 
 const MyAppointments = () => {
   const [appointments, setAppointments] = useState([]);
@@ -13,8 +13,27 @@ const MyAppointments = () => {
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [healthStep, setHealthStep] = useState("location");
+  const [donorId, setDonorId] = useState(null); // ✅ Thêm state donorId
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
+
+  // Lấy thông tin donor để có donorId
+  useEffect(() => {
+    const fetchDonor = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/donor/profile", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.donor?._id) {
+          setDonorId(data.donor._id);
+        }
+      } catch (error) {
+        console.error("Lỗi lấy donor info:", error);
+      }
+    };
+    if (token) fetchDonor();
+  }, [token]);
 
   const fetchAppointments = async () => {
     try {
@@ -231,6 +250,7 @@ const MyAppointments = () => {
           {healthStep === "location" && (
             <LocationChecker
               appointmentId={selectedAppointment._id}
+              donorId={donorId}  // ✅ Truyền donorId vào LocationChecker
               onSuccess={() => setHealthStep("form")}
             />
           )}

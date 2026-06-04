@@ -29,3 +29,24 @@ export const protectStaff = async (req, res, next) => {
     res.status(401).json({ message: 'Không có token xác thực' });
   }
 };
+
+export const authenticateStaffOrDonor = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Cho phép cả staff và donor
+    if (decoded.role === 'staff' || decoded.role === 'donor') {
+      req.user = decoded;
+      return next();
+    }
+    
+    res.status(403).json({ message: 'Forbidden' });
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid token' });
+  }
+};
