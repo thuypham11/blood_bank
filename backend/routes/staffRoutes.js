@@ -17,16 +17,14 @@ const router = express.Router();
 // Public route
 router.post('/login', staffLogin);
 
-// Protected routes
-router.use(protectStaff);
+// Protected routes - TẤT CẢ đều cần protectStaff
+router.get('/sessions', protectStaff, getTodaySessions);
+router.get('/queue/:sessionId', protectStaff, getQueue);
+router.get('/stats', protectStaff, getStats);
 
-router.get('/sessions', getTodaySessions);
-router.get('/queue/:sessionId', getQueue);
-router.get('/stats', getStats);
-
-router.post('/queue/add', addToQueue);
-router.post('/queue/call/:sessionId', callNextDonor);
-router.post('/donation/start', startDonation);
-router.post('/donation/complete', completeDonation);
+router.post('/queue/add', protectStaff, addToQueue);
+router.post('/queue/call/:sessionId', protectStaff, callNextDonor);
+router.post('/donation/start', protectStaff, startDonation);
+router.post('/donation/complete', protectStaff, completeDonation);
 
 export default router;

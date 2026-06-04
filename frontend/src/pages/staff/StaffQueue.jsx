@@ -1,12 +1,13 @@
 // frontend/src/pages/staff/StaffQueue.jsx
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { 
   Users, Clock, CheckCircle, UserCheck, PhoneCall, 
-  ChevronLeft, RefreshCw, Volume2, Printer, QrCode
+  ChevronLeft, RefreshCw, Volume2
 } from 'lucide-react';
 import io from 'socket.io-client';
+import BarcodeModal from '../../components/BarcodeModal';
 
 const StaffQueue = () => {
   const location = useLocation();
@@ -17,6 +18,9 @@ const StaffQueue = () => {
   const [loading, setLoading] = useState(true);
   const [currentServing, setCurrentServing] = useState(null);
   const [calling, setCalling] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [showBarcode, setShowBarcode] = useState(false);
+  const [completedData, setCompletedData] = useState(null);
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -26,7 +30,6 @@ const StaffQueue = () => {
       return;
     }
 
-    // Kết nối Socket.IO
     const socket = io('http://localhost:5000', {
       extraHeaders: { Authorization: `Bearer ${token}` }
     });
@@ -34,31 +37,43 @@ const StaffQueue = () => {
 
     const sessionId = location.pathname.split('/').pop();
     socket.emit('staff_join', sessionId);
+    
+    console.log('🔌 Socket connected, sessionId:', sessionId);
 
     socket.on('queue_updated', (data) => {
-      setQueue(data.queue);
-      setCurrentServing(data.currentServing);
+      console.log('📡 Queue updated via socket:', data);
+      setQueue(data.queue || []);
+      if (data.currentServing !== undefined) {
+        setCurrentServing(data.currentServing);
+      }
+      fetchQueue();
     });
 
     fetchQueue();
 
-    return () => socket.disconnect();
-  }, []);
+    return () => {
+      console.log('🔌 Socket disconnecting');
+      socket.disconnect();
+    };
+  }, [refreshKey]);
 
   const fetchQueue = async () => {
     const token = localStorage.getItem('staffToken');
     const sessionId = location.pathname.split('/').pop();
     try {
+      console.log('🔄 Fetching queue for session:', sessionId);
       const res = await fetch(`http://localhost:5000/api/staff/queue/${sessionId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
+      console.log('📦 Queue data:', data);
       if (data.success) {
         setSession(data.data);
         setQueue(data.data.queue || []);
         setCurrentServing(data.data.currentServing);
       }
     } catch (error) {
+      console.error('Error fetching queue:', error);
       toast.error('Không thể tải hàng đợi');
     } finally {
       setLoading(false);
@@ -77,13 +92,14 @@ const StaffQueue = () => {
       const data = await res.json();
       if (data.success) {
         toast.success(`Đã gọi donor: ${data.data.donor?.fullName}`);
-        // Phát âm thanh thông báo
         const audio = new Audio('/sounds/notification.mp3');
         audio.play();
+        await fetchQueue();
       } else {
         toast.error(data.message);
       }
     } catch (error) {
+      console.error('Error calling next donor:', error);
       toast.error('Không thể gọi donor');
     } finally {
       setCalling(false);
@@ -91,51 +107,50 @@ const StaffQueue = () => {
   };
 
   const completeDonation = async (donorId, volume) => {
-    const token = localStorage.getItem('staffToken');
-    const sessionId = location.pathname.split('/').pop();
-    try {
-      const res = await fetch('http://localhost:5000/api/staff/donation/complete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ sessionId, donorId, volume })
+  const token = localStorage.getItem('staffToken');
+  const sessionId = location.pathname.split('/').pop();
+  
+  const loadingToast = toast.loading('Đang xử lý...');
+  
+  try {
+    const res = await fetch('http://localhost:5000/api/staff/donation/complete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ sessionId, donorId, volume })
+    });
+    
+    const data = await res.json();
+    console.log('📥 Complete donation response:', data);
+    
+    if (data.success) {
+      toast.success('Hoàn thành hiến máu!', { id: loadingToast });
+      
+      // ✅ Lấy donor từ response (quan trọng!)
+      setCompletedData({
+        bloodUnit: data.data.bloodUnit,
+        donor: data.data.donor,  // Dùng donor từ response
+        volume: volume
       });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Hoàn thành hiến máu! Barcode đã được tạo.');
-        if (data.data.qrCode) {
-          // Mở modal hiển thị barcode để in
-          window.open(data.data.qrCode, '_blank');
-        }
-      } else {
-        toast.error(data.message);
-      }
-    } catch (error) {
-      toast.error('Lỗi hoàn thành hiến máu');
+      setShowBarcode(true);
+      
+      await fetchQueue();
+      setRefreshKey(prev => prev + 1);
+    } else {
+      toast.error(data.message || 'Không thể hoàn thành hiến máu', { id: loadingToast });
     }
-  };
+  } catch (error) {
+    console.error('❌ Complete donation error:', error);
+    toast.error('Lỗi: ' + error.message, { id: loadingToast });
+  }
+};
 
   const waitingQueue = queue.filter(q => q.status === 'waiting');
   const calledQueue = queue.filter(q => q.status === 'called');
   const donatingQueue = queue.filter(q => q.status === 'donating');
   const completedQueue = queue.filter(q => q.status === 'completed');
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'waiting':
-        return { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Chờ' };
-      case 'called':
-        return { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Đã gọi' };
-      case 'donating':
-        return { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Đang hiến' };
-      case 'completed':
-        return { bg: 'bg-green-100', text: 'text-green-700', label: 'Hoàn thành' };
-      default:
-        return { bg: 'bg-gray-100', text: 'text-gray-700', label: status };
-    }
-  };
 
   if (loading) {
     return (
@@ -168,7 +183,13 @@ const StaffQueue = () => {
               </p>
             </div>
           </div>
-          <button onClick={fetchQueue} className="p-2 rounded-lg hover:bg-gray-100">
+          <button 
+            onClick={() => {
+              fetchQueue();
+              toast.success('Đã làm mới hàng đợi');
+            }} 
+            className="p-2 rounded-lg hover:bg-gray-100"
+          >
             <RefreshCw className="w-5 h-5" />
           </button>
         </div>
@@ -246,8 +267,27 @@ const StaffQueue = () => {
           </div>
         )}
 
+        {/* Danh sách đang hiến */}
+        {donatingQueue.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-purple-600" />
+              Đang hiến máu ({donatingQueue.length})
+            </h2>
+            <div className="space-y-2">
+              {donatingQueue.map((item) => (
+                <DonatingDonorCard
+                  key={item._id}
+                  donor={item.donor}
+                  position={item.position}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Trống */}
-        {waitingQueue.length === 0 && calledQueue.length === 0 && (
+        {waitingQueue.length === 0 && calledQueue.length === 0 && donatingQueue.length === 0 && (
           <div className="text-center py-12 bg-white rounded-xl">
             <Users className="w-16 h-16 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500">Chưa có ai trong hàng đợi</p>
@@ -255,6 +295,19 @@ const StaffQueue = () => {
           </div>
         )}
       </main>
+
+      {/* Modal barcode */}
+      {showBarcode && completedData && (
+        <BarcodeModal
+          bloodUnit={completedData.bloodUnit}
+          donor={completedData.donor}
+          volume={completedData.volume}
+          onClose={() => {
+            setShowBarcode(false);
+            setCompletedData(null);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -300,6 +353,12 @@ const CalledDonorCard = ({ donor, position, onComplete }) => {
   const [showVolume, setShowVolume] = useState(false);
   const volumes = [250, 350, 450];
 
+  const handleComplete = async (volume) => {
+    console.log('🎯 Completing with volume:', volume);
+    await onComplete(volume);
+    setShowVolume(false);
+  };
+
   if (showVolume) {
     return (
       <div className="bg-blue-50 rounded-xl shadow-sm p-4 border border-blue-200">
@@ -308,13 +367,19 @@ const CalledDonorCard = ({ donor, position, onComplete }) => {
           {volumes.map(v => (
             <button
               key={v}
-              onClick={() => onComplete(v)}
+              onClick={() => handleComplete(v)}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               {v}ml
             </button>
           ))}
         </div>
+        <button 
+          onClick={() => setShowVolume(false)} 
+          className="mt-3 text-sm text-gray-500 hover:text-gray-700 w-full text-center"
+        >
+          Hủy
+        </button>
       </div>
     );
   }
@@ -331,15 +396,35 @@ const CalledDonorCard = ({ donor, position, onComplete }) => {
             <p className="text-sm text-gray-500">Nhóm máu: {donor?.bloodGroup || '--'}</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowVolume(true)}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-          >
-            <CheckCircle className="w-4 h-4" />
-            Hoàn thành
-          </button>
+        <button
+          onClick={() => setShowVolume(true)}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+        >
+          <CheckCircle className="w-4 h-4" />
+          Hoàn thành
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const DonatingDonorCard = ({ donor, position }) => {
+  return (
+    <div className="bg-purple-50 rounded-xl shadow-sm p-4 border border-purple-200">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center">
+            <UserCheck className="w-6 h-6 text-purple-700" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-800">{donor?.fullName || 'Đang tải...'}</p>
+            <p className="text-sm text-gray-500">Nhóm máu: {donor?.bloodGroup || '--'}</p>
+          </div>
         </div>
+        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          Đang hiến
+        </span>
       </div>
     </div>
   );
