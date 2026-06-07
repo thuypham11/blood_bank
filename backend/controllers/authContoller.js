@@ -146,3 +146,47 @@ export const getProfile = async (req, res) => {
 		res.status(500).json({ message: "Error fetching profile", error: error.message });
 	}
 };
+export const createAdmin = async (req, res) => {
+	try {
+		const { name, email, password } = req.body;
+
+		if (!name || !email || !password) {
+			return res.status(400).json({
+				message: "Name, email and password are required",
+			});
+		}
+
+		const existed = await Admin.findOne({ email });
+
+		if (existed) {
+			return res.status(400).json({
+				message: "Admin already exists",
+			});
+		}
+
+		const admin = await Admin.create({
+			name,
+			email,
+			password,
+			role: "admin",
+			isActive: true,
+		});
+
+		res.status(201).json({
+			success: true,
+			message: "Admin created successfully",
+			admin: {
+				id: admin._id,
+				name: admin.name,
+				email: admin.email,
+				role: admin.role,
+			},
+		});
+	} catch (err) {
+		console.error("Create Admin Error:", err);
+		res.status(500).json({
+			message: "Create admin failed",
+			error: err.message,
+		});
+	}
+};
