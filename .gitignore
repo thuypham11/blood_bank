@@ -25,3 +25,28 @@ dist-ssr
 
 # Environment Variables
 .env
+
+# Mobile app (React Native)
+BBMSDonorApp/node_modules/
+BBMSDonorApp/.expo/
+BBMSDonorApp/.expo-shared/
+BBMSDonorApp/android/
+BBMSDonorApp/ios/
+BBMSDonorApp/build/
+BBMSDonorApp/.env
+BBMSDonorApp/.env.local
+BBMSDonorApp/.expo-web/
+BBMSDonorApp/dist/
+BBMSDonorApp/*.jks
+BBMSDonorApp/*.p8
+BBMSDonorApp/*.p12
+BBMSDonorApp/*.key
+BBMSDonorApp/*.mobileprovision
+BBMSDonorApp/*.orig.*
+BBMSDonorApp/.hmap
+BBMSDonorApp/*.hmap
+BBMSDonorApp/*.dSYM
+BBMSDonorApp/*.xcworkspace
+BBMSDonorApp/xcuserdata/
+BBMSDonorApp/vscode/
+BBMSDonorApp/.idea/
