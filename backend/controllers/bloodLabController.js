@@ -417,19 +417,25 @@ export const getLabBloodRequests = async (req, res) => {
     try {
         const labId = req.user._id;
 
-        const requests = await BloodRequest.find({ labId })
-            .populate("hospitalId", "name email phone address")
-            .sort({ createAt: -1 });
+        const requests = await BloodRequest.find({
+            labId,
+        })
+            .populate(
+                "hospitalId",
+                "name email phone address"
+            )
+            .sort({ createdAt: -1 });
 
         res.json({
             success: true,
-            request,
+            requests,
         });
     } catch (error) {
-        console.error("Get Lab Requests Error :", error);
+        console.error(error);
+
         res.status(500).json({
             success: false,
-            message: "Failed to fetch blood requests",
+            message: "Failed to fetch requests",
         });
     }
 };
@@ -463,7 +469,7 @@ export const updateBloodRequestStatus = async (req, res) => {
             });
         }
         request.status = action === "accept" ? "accepted" : "rejected";
-        request, processedAt = new Date();
+        request.processedAt = new Date();
 
         await request.save();
         await Facility.findByIdAndUpdate(labId, {
@@ -496,7 +502,7 @@ export const getAllLabs = async (req, res) => {
         const labs = await Facility.find({
             facilityType: "blood-lab",
             status: "approved",
-        }).selected("name email phone address operatingHours");
+        }).select("name email phone address operatingHours");
         res.json({
             success: true,
             labs,

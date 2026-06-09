@@ -68,7 +68,7 @@ router.patch(
 );
 
 router.patch(
-    "blood/units/:id/discard",
+    "/blood/units/:id/discard",
     protectFacility,
     discardBloodUnit
 );
