@@ -18,6 +18,15 @@ import BloodStock from "./pages/bloodlab/BloodStock";
 import LabProfile from "./pages/bloodlab/LabProfile";
 import GetAllFacilities from "./pages/admin/GetAllFacilities";
 import GetAllDonors from "./pages/admin/GetAllDonors";
+import AdminProfile from "./pages/admin/AdminProfile";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminBloodRequests from "./pages/admin/AdminBloodRequests";
+import AdminBloodStock from "./pages/admin/AdminBloodStock";
+import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
+import AdminReports from "./pages/admin/AdminReports";
+import AdminBloodCamps from "./pages/admin/AdminBloodCamps";
+import AdminNotifications from "./pages/admin/AdminNotifications";
+import AdminSettings from "./pages/admin/AdminSettings";
 import DonorCampsList from "./pages/donor/DonorCampsList";
 import LabManageRequests from "./pages/bloodlab/LabManageRequests";
 import HospitalRequestBlood from "./pages/hospital/HospitalRequestBlood";
@@ -30,6 +39,9 @@ import Contact from "./components/contact/Contact";
 import DonorDonationHistory from "./pages/donor/DonorDonationHistory";
 import BookDonation from "./pages/donor/BookDonation";
 import MyAppointments from "./pages/donor/MyAppointments";
+import StaffDashboard from './pages/staff/StaffDashboard';
+import StaffQueue from './pages/staff/StaffQueue';
+import StaffLogin from './pages/staff/StaffLogin';
 
 function App() {
 	return (
@@ -105,8 +117,19 @@ function App() {
 				<Route path="verification" element={<AdminFacilities />} />
 				<Route path="donors" element={<GetAllDonors />} />
 				<Route path="facilities" element={<GetAllFacilities />} />
+				<Route path="users" element={<AdminUsers />} />
+				<Route path="blood-requests" element={<AdminBloodRequests />} />
+				<Route path="blood-stock" element={<AdminBloodStock />} />
+				<Route path="camps" element={<AdminBloodCamps />} />
+				<Route path="audit-logs" element={<AdminAuditLogs />} />
+				<Route path="reports" element={<AdminReports />} />
+				<Route path="notifications" element={<AdminNotifications />} />
+				<Route path="settings" element={<AdminSettings />} />
+				<Route path="profile" element={<AdminProfile />} />
 			</Route>
-
+			<Route path="/staff/login" element={<StaffLogin />} />
+				<Route path="/staff/dashboard" element={<StaffDashboard />} />
+<Route path="/staff/queue/:sessionId" element={<StaffQueue />} />
 			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
 			<Route path="*" element={<LandingPage />} />
 		</Routes>

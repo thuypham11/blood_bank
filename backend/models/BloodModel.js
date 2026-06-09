@@ -27,6 +27,61 @@ const screeningResultSchema = new mongoose.Schema(
             enum: ["pending", "negative", "positive"],
             default: "pending",
         },
+const bloodSchema = new mongoose.Schema(
+  {
+    barcode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    bloodGroup: {
+      type: String,
+      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+      required: true,
+    },
+    bloodType: {
+      type: String,
+      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    collectionDate: {
+      type: Date,
+      default: Date.now,
+    },
+    expirationDate: {
+      type: Date,
+    },
+    expiryDate: {
+      type: Date,
+    },
+    bloodLab: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Facility",
+    },
+    hospital: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Facility",
+    },
+  screeningResult: {
+      hiv: {
+        type: String,
+        enum: ["pending", "negative", "positive"],
+        default: "pending",
+      },
+      hbv: {
+        type: String,
+        enum: ["pending", "negative", "positive"],
+        default: "pending",
+      },
+      hcv: {
+        type: String,
+        enum: ["pending", "negative", "positive"],
+        default: "pending",
+      },
     },
     { _id: false }
 );
@@ -105,10 +160,30 @@ bloodSchema.pre("validate", function (next) {
         this.expiryDate = expiration;
     }
     next();
+// Pre-save middleware to set expiration date (42 days after collection)
+bloodSchema.pre("save", function (next) {
+  if (!this.bloodType && this.bloodGroup) {
+    this.bloodType = this.bloodGroup;
+  }
+  if (!this.bloodGroup && this.bloodType) {
+    this.bloodGroup = this.bloodType;
+  }
+  if (this.collectionDate && !this.expirationDate && !this.expiryDate) {
+    const expiration = new Date(this.collectionDate);
+    expiration.setDate(expiration.getDate() + 42);
+    this.expirationDate = expiration;
+    this.expiryDate = expiration;
+  } else if (this.expirationDate && !this.expiryDate) {
+    this.expiryDate = this.expirationDate;
+  } else if (this.expiryDate && !this.expirationDate) {
+    this.expirationDate = this.expiryDate;
+  }
+  next();
 });
 
 bloodSchema.virtual("isExpired").get(function () {
     return Boolean(this.expiryDate && new Date() > this.expiryDate);
+  return new Date() > (this.expiryDate || this.expirationDate);
 });
 bloodSchema.post("find", async function (docs) {
     await Promise.all(
@@ -129,3 +204,4 @@ bloodSchema.post("find", async function (docs) {
 const Blood = mongoose.models.Blood || mongoose.model("Blood", bloodSchema);
 console.log("Blood Model active");
 export default Blood;
+export default mongoose.model("Blood", bloodSchema);

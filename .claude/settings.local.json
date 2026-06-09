@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"d:\\\\blood_bank\" -Recurse -Depth 3)",
+      "PowerShell(head -100)",
+      "Bash(node --input-type=module --eval \"import './server.js'\")",
+      "Bash(kill %1)",
+      "Bash(npm install *)",
+      "Bash(dir /a d:\\\\blood_bank\\\\backend\\\\.env)",
+      "Bash(timeout 8 node server.js)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(node server.js)",
+      "Bash(curl -s http://localhost:5000/api/admin/dashboard)",
+      "Read(//tmp/**)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue | Select-Object OwningProcess; Stop-Process -Id \\(Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue\\).OwningProcess -Force -ErrorAction SilentlyContinue; Write-Host \"Port 5000 cleared\")",
+      "PowerShell(Get-Service -Name \"MongoDB\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 27017 -ErrorAction SilentlyContinue)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}

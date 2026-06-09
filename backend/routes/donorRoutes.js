@@ -9,18 +9,29 @@ import {
   getDonorTestResults,
   getDonorReminders,
   getDonationCertificate,
-  getUrgentBloodRequests
+  getUrgentBloodRequests,
+  sendOtp,        // ✅ THÊM
+  verifyOtp       
 } from "../controllers/donorController.js";
 import { 
   getAvailableCamps, 
   createAppointment,
   getMyAppointments,
-  cancelAppointment
+  cancelAppointment,
+  checkAppointmentEligibility,
+   
 } from "../controllers/donationController.js";
 import Donor from "../models/donorModel.js";
 import axios from "axios";
+import { checkLocationAndDate } from '../controllers/donationController.js';
+import { uploadIdCard, verifyAndSaveIdCard } from "../controllers/donorController.js";
+import { submitHealthDeclaration } from '../controllers/donationController.js';
 const router = express.Router();
-
+router.post('/check-location', protectDonor, checkLocationAndDate);
+router.post("/check-appointment", protectDonor, checkAppointmentEligibility);
+router.post('/send-otp', protectDonor, sendOtp);
+router.post('/verify-otp', protectDonor, verifyOtp);
+router.post('/health-declaration', protectDonor, submitHealthDeclaration);
 // Profile routes
 router.get("/profile", protectDonor, getDonorProfile);
 router.put("/profile", protectDonor, updateDonorProfile);
@@ -46,8 +57,8 @@ router.get("/camps", protectDonor, getAvailableCamps);
 router.post("/appointments", protectDonor, createAppointment);
 router.get("/appointments", protectDonor, getMyAppointments);
 router.put("/appointments/:id/cancel", protectDonor, cancelAppointment);
-
-// Public route for Golang (no authentication required)
+router.post("/upload-id-card", protectDonor, uploadIdCard);
+router.post("/verify-id-card", protectDonor, verifyAndSaveIdCard);// Public route for Golang (no authentication required)
 router.get("/public/test-results/:email", async (req, res) => {
   try {
     const donor = await Donor.findOne({ email: req.params.email }).populate({

@@ -32,6 +32,10 @@ const bloodCampSchema = new mongoose.Schema(
         type: String,
         match: [/^[1-9][0-9]{5}$/, "Please enter a valid 6-digit pincode"],
       },
+        coordinates: {
+    lat: { type: Number, required: true },   // vĩ độ
+    lng: { type: Number, required: true }    // kinh độ
+  }
     },
     expectedDonors: { type: Number, default: 0 },
     actualDonors: { type: Number, default: 0 },

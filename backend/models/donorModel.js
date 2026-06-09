@@ -39,8 +39,8 @@ const donorSchema = new mongoose.Schema(
 		address: {
 			street: { type: String, required: [true, "Địa chỉ đường là bắt buộc"] },
 			city: { type: String },
-			ward: { type: String, required: [true, "Phường/Xã là bắt buộc"] },
-			state: { type: String, required: [true, "Tỉnh/Thành phố là bắt buộc"] },
+			ward: { type: String },
+			state: { type: String },
 			pincode: { type: String }, // optional — đã xóa khỏi form
 		},
 
@@ -92,6 +92,29 @@ const donorSchema = new mongoose.Schema(
 				bloodUnitId: { type: mongoose.Schema.Types.ObjectId, ref: "BloodUnit" },
 			},
 		],
+birthDate: { type: Date },
+		// Trong donorSchema, sửa lại:
+idCard: {
+  number: { type: String, unique: true, sparse: true },
+  fullName: { type: String },
+  birthDate: { type: Date },
+  gender: { type: String }, // ✅ Bỏ enum, chấp nhận "Nam", "Nữ", "Male", "Female",...
+  home: { type: String },
+  address: { type: String },
+  issueDate: { type: Date },
+  expiryDate: { type: Date },
+  imageUrl: { type: String },
+  verifiedAt: { type: Date },
+},
+// ... các trường hiện có
+permanentAddress: {
+  street: { type: String },
+  city: { type: String },
+  state: { type: String },
+  pincode: { type: String },
+},
+// address vẫn giữ nguyên (dùng cho địa chỉ tạm trú)
+isIdVerified: { type: Boolean, default: false },  
 
 		// 🔐 Security & Access
 		lastLogin: Date,

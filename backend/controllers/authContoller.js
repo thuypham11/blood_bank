@@ -99,7 +99,7 @@ export const login = async (req, res) => {
 				{ _id: user._id },
 				{ $set: { lastLogin: new Date(), history: updatedHistory } },
 			);
-		} else if (user.role === "admin") {
+		} else if (user.role === "admin" || user.role === "superadmin") {
 			await Admin.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
 		} else {
 			await Donor.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
@@ -110,7 +110,7 @@ export const login = async (req, res) => {
 		if (user.role === "donor") redirect = "/donor";
 		else if (user.role === "hospital") redirect = "/hospital";
 		else if (user.role === "blood-lab") redirect = "/lab";
-		else if (user.role === "admin") redirect = "/admin";
+		else if (user.role === "admin" || user.role === "superadmin") redirect = "/admin";
 
 		res.status(200).json({
 			success: true,
@@ -133,7 +133,7 @@ export const getProfile = async (req, res) => {
 		let user;
 		if (req.user.role === "donor") {
 			user = await Donor.findById(req.user.id).select("-password");
-		} else if (req.user.role === "admin") {
+		} else if (req.user.role === "admin" || req.user.role === "superadmin") {
 			user = await Admin.findById(req.user.id).select("-password");
 		} else {
 			user = await Facility.findById(req.user.id).select("-password");

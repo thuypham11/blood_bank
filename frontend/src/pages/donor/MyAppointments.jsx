@@ -3,13 +3,37 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, MapPin, Clock, XCircle, Loader2, QrCode, Eye, AlertCircle } from "lucide-react";
 import { toast } from "react-hot-toast";
+import HealthDeclarationForm from "../../components/HealthDeclarationForm";
+import LocationChecker from "../../components/LocationChecker";
 
 const MyAppointments = () => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(null);
+  const [showHealthModal, setShowHealthModal] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [healthStep, setHealthStep] = useState("location");
+  const [donorId, setDonorId] = useState(null); // ✅ Thêm state donorId
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
+
+  // Lấy thông tin donor để có donorId
+  useEffect(() => {
+    const fetchDonor = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/donor/profile", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.donor?._id) {
+          setDonorId(data.donor._id);
+        }
+      } catch (error) {
+        console.error("Lỗi lấy donor info:", error);
+      }
+    };
+    if (token) fetchDonor();
+  }, [token]);
 
   const fetchAppointments = async () => {
     try {
@@ -60,7 +84,7 @@ const MyAppointments = () => {
       
       if (data.success) {
         toast.success("Đã hủy lịch hẹn thành công");
-        fetchAppointments(); // Refresh danh sách
+        fetchAppointments();
       } else {
         toast.error(data.message || "Hủy lịch thất bại");
       }
@@ -84,7 +108,6 @@ const MyAppointments = () => {
     return <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>{s.label}</span>;
   };
 
-  // Kiểm tra xem lịch hẹn có thể hủy không (chỉ hủy được lịch trong tương lai)
   const canCancel = (appointment) => {
     const appointmentDate = new Date(appointment.appointmentDate);
     const today = new Date();
@@ -92,6 +115,12 @@ const MyAppointments = () => {
     return appointment.status !== "cancelled" && 
            appointment.status !== "completed" &&
            appointmentDate >= today;
+  };
+
+  const handleHealthClick = (app) => {
+    setSelectedAppointment(app);
+    setHealthStep("location");
+    setShowHealthModal(true);
   };
 
   if (loading) {
@@ -108,7 +137,6 @@ const MyAppointments = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-2">
             <div className="p-3 bg-red-100 rounded-2xl">
@@ -139,7 +167,6 @@ const MyAppointments = () => {
               const isUpcoming = new Date(app.appointmentDate) >= new Date() && 
                                  app.status !== "cancelled" && 
                                  app.status !== "completed";
-              
               return (
                 <div key={app._id} className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-shadow">
                   <div className="p-6">
@@ -149,7 +176,6 @@ const MyAppointments = () => {
                           <h3 className="text-lg font-semibold text-gray-800">{app.camp?.title || "Điểm hiến máu"}</h3>
                           {getStatusBadge(app.status)}
                         </div>
-                        
                         <div className="space-y-2 text-sm text-gray-600">
                           <div className="flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-red-500" />
@@ -158,10 +184,7 @@ const MyAppointments = () => {
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-red-500" />
                             <span>{new Date(app.appointmentDate).toLocaleDateString("vi-VN", {
-                              weekday: 'long',
-                              day: 'numeric',
-                              month: 'long',
-                              year: 'numeric'
+                              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
                             })}</span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -176,29 +199,21 @@ const MyAppointments = () => {
                           <button
                             onClick={() => handleCancel(app._id)}
                             disabled={cancelling === app._id}
-                            className="flex items-center gap-1 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                            className="flex items-center gap-1 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50"
                           >
-                            {cancelling === app._id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <XCircle className="w-4 h-4" />
-                            )}
+                            {cancelling === app._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                             Hủy
                           </button>
                         )}
-                        
                         {app.status === "confirmed" && (
                           <button
-                            onClick={() => {
-                              toast.success("Vui lòng xuất trình CCCD/CMND tại điểm hiến máu để check-in");
-                            }}
-                            className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                            onClick={() => handleHealthClick(app)}
+                            className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                           >
                             <QrCode className="w-4 h-4" />
-                            Check-in
+                            Khai báo y tế
                           </button>
                         )}
-                        
                         {app.status === "completed" && (
                           <button
                             onClick={() => navigate("/donor/history")}
@@ -210,8 +225,6 @@ const MyAppointments = () => {
                         )}
                       </div>
                     </div>
-
-                    {/* Lưu ý cho lịch sắp tới */}
                     {isUpcoming && (
                       <div className="mt-4 pt-3 border-t border-gray-100">
                         <div className="flex items-start gap-2 text-xs text-blue-600 bg-blue-50 p-3 rounded-lg">
@@ -230,6 +243,30 @@ const MyAppointments = () => {
           </div>
         )}
       </div>
+
+      {/* Modal kiểm tra vị trí và khai báo y tế */}
+      {showHealthModal && selectedAppointment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          {healthStep === "location" && (
+            <LocationChecker
+              appointmentId={selectedAppointment._id}
+              donorId={donorId}  // ✅ Truyền donorId vào LocationChecker
+              onSuccess={() => setHealthStep("form")}
+            />
+          )}
+          {healthStep === "form" && (
+            <HealthDeclarationForm
+              appointmentId={selectedAppointment._id}
+              onSuccess={() => {
+                setShowHealthModal(false);
+                fetchAppointments();
+                toast.success("Đã ghi nhận khai báo. Vui lòng chờ nhân viên gọi tên.");
+              }}
+              onClose={() => setShowHealthModal(false)}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 };

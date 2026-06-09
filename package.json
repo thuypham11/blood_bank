@@ -1,0 +1,12 @@
+{
+  "name": "blood-bank-management-system-main",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm --prefix backend run start\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "npm --prefix backend run start",
+    "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -13,6 +13,21 @@ import {
     getLabBloodRequests,
     updateBloodRequestStatus,
     getAllLabs,
+  createBloodCamp,
+  deleteBloodCamp,
+  getBloodLabCamps,
+  getBloodLabDashboard,
+  getBloodLabHistory,
+  updateBloodCamp,        // ADD THIS
+  updateCampStatus,       // ADD THIS
+  addBloodStock,
+  removeBloodStock,
+  getBloodStock,
+  updateBloodRequestStatus,
+ // updateBloodHandoverStatus,
+  getLabBloodRequests,
+  getAllLabs,
+  updateBloodScreening,
 } from "../controllers/bloodLabController.js";
 
 import { protectFacility } from "../middlewares/facilityMiddleware.js";
@@ -41,6 +56,10 @@ router.patch(
     protectFacility,
     updateBloodUnitScreening
 );
+// Blood request routes for labs
+router.get("/blood/requests", protectFacility, getLabBloodRequests);
+router.put("/blood/requests/:id", protectFacility, updateBloodRequestStatus);
+router.patch("/blood/requests/:id/handover", protectFacility);
 
 router.patch(
     "/blood/units/:id/import",
@@ -68,3 +87,4 @@ router.get("/labs", protectFacility, getAllLabs);
 console.log("NEW BLOOD LAB ROUTES ACTIVE");
 export default router;
 
+export default router;
