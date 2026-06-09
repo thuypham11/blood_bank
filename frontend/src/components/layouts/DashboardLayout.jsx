@@ -126,7 +126,7 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 				{ path: "/lab", label: "Bảng Điều Khiển", icon: BarChart3, badge: null },
 				{ path: "/lab/inventory", label: "Kho Máu", icon: Droplet, badge: null },
 				{ path: "/lab/Donor", label: "Người Hiến Máu", icon: User, badge: null },
-				{ path: "/lab/camps", label: "Điểm Hiến Máu", icon: Calendar, badge: null },
+				/*{ path: "/lab/camps", label: "Điểm Hiến Máu", icon: Calendar, badge: null },*/
 				{ path: "/lab/requests", label: "Yêu Cầu", icon: ClipboardList, badge: null },
 				{ path: "/lab/profile", label: "Hồ Sơ", icon: CheckCircle, badge: null },
 			],
