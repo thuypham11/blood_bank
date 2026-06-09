@@ -4,6 +4,98 @@ import BloodCamp from "../models/bloodCampModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 
+const getRequestItems = (request) => {
+  if (request.bloodItems?.length) return request.bloodItems;
+  if (request.bloodType && request.units) {
+    return [{ bloodType: request.bloodType, units: request.units }];
+  }
+  return [];
+};
+
+const formatBloodItems = (items) =>
+  items.map((item) => `${item.units} units of ${item.bloodType}`).join(", ");
+
+const applyExpiredRequestCancellations = async (filter = {}) => {
+  const now = new Date();
+  const expiredRequests = await BloodRequest.find({
+    ...filter,
+    status: "pending",
+    expiresAt: { $lte: now },
+  });
+
+  await Promise.all(expiredRequests.map(async (request) => {
+    request.status = "cancelled";
+    request.cancelledAt = now;
+    request.cancellationReason = "Auto-cancelled after 3 days without blood bank acceptance";
+    request.handoverTimeline.push({
+      status: "rejected",
+      label: "Auto-cancelled after 3 days without acceptance",
+      date: now,
+      actor: request.labId,
+      note: request.cancellationReason,
+    });
+    await request.save();
+  }));
+};
+
+const assertAndTransferRequestStock = async (request, labId) => {
+  const items = getRequestItems(request);
+  const labStocks = [];
+
+  for (const item of items) {
+    const labStock = await Blood.findOne({
+      $or: [{ bloodLab: labId }, { hospital: labId }],
+      bloodGroup: item.bloodType,
+    });
+
+    if (!labStock || labStock.quantity < item.units) {
+      throw new Error(
+        `Insufficient stock for ${item.bloodType}. Available: ${labStock?.quantity || 0} units, Requested: ${item.units} units`
+      );
+    }
+
+    labStocks.push({ item, labStock });
+  }
+
+  for (const { item, labStock } of labStocks) {
+    labStock.quantity -= item.units;
+
+    if (labStock.quantity === 0) {
+      await Blood.findByIdAndDelete(labStock._id);
+    } else {
+      await labStock.save();
+    }
+
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 42);
+
+    const hospitalStock = await Blood.findOne({
+      hospital: request.hospitalId._id,
+      bloodGroup: item.bloodType,
+    });
+
+    if (hospitalStock) {
+      hospitalStock.quantity += item.units;
+      hospitalStock.expiryDate = expiryDate;
+      await hospitalStock.save();
+    } else {
+      await Blood.create({
+        bloodGroup: item.bloodType,
+        bloodType: item.bloodType,
+        quantity: item.units,
+        expiryDate,
+        hospital: request.hospitalId._id,
+        screeningResult: {
+          hiv: "pending",
+          hbv: "pending",
+          hcv: "pending",
+        },
+        status: "pending_testing",
+      });
+    }
+  }
+};
+
 
 /* ==============================================================
    BLOOD LAB DASHBOARD & HISTORY
@@ -20,7 +112,7 @@ export const getBloodLabDashboard = async (req, res) => {
 
     const [camps, stock, facility] = await Promise.all([
       BloodCamp.find({ hospital: labId }).sort({ createdAt: -1 }),
-      Blood.find({ bloodLab: labId }),
+      Blood.find({ $or: [{ bloodLab: labId }, { hospital: labId }] }),
       Facility.findById(labId).select('history name email phone address operatingHours status lastLogin') // select relevant fields
     ]);
 
@@ -371,6 +463,7 @@ export const addBloodStock = async (req, res) => {
     } else {
       stock = await Blood.create({
         hospital: bloodLab,
+        bloodLab,
         bloodType: bloodType,
         quantity: Number(quantity),
         expiryDate,
@@ -478,7 +571,7 @@ export const removeBloodStock = async (req, res) => {
     }
 
    const stock = await Blood.findOne({
-  hospital: bloodLab,
+  $or: [{ hospital: bloodLab }, { bloodLab }],
   bloodType: bloodType,
 });
 
@@ -539,7 +632,9 @@ export const getBloodStock = async (req, res) => {
   try {
     const labId = req.user._id;
 
-    const stock = await Blood.find({ hospital: labId }).sort({ bloodType: 1 });
+    const stock = await Blood.find({
+      $or: [{ hospital: labId }, { bloodLab: labId }],
+    }).sort({ bloodType: 1 });
 
     res.json({
       success: true,
@@ -596,6 +691,8 @@ export const updateBloodRequestStatus = async (req, res) => {
     const { action } = req.body; // accept / reject
     const labId = req.user._id;
 
+    await applyExpiredRequestCancellations({ labId });
+
     if (!["accept", "reject"].includes(action)) {
       return res.status(400).json({ 
         success: false, 
@@ -623,27 +720,22 @@ export const updateBloodRequestStatus = async (req, res) => {
       });
     }
 
-    // If accepting, check stock availability
+    const items = getRequestItems(request);
+
+    // If accepting, check stock availability. Stock is transferred when shipping starts.
     if (action === "accept") {
-      const labStock = await Blood.findOne({ 
-        bloodLab: labId, 
-        bloodGroup: request.bloodType 
-      });
-
-      if (!labStock || labStock.quantity < request.units) {
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock. Available: ${labStock?.quantity || 0} units, Requested: ${request.units} units`
+      for (const item of items) {
+        const labStock = await Blood.findOne({
+          $or: [{ bloodLab: labId }, { hospital: labId }],
+          bloodGroup: item.bloodType
         });
-      }
 
-      // Remove from lab stock
-      labStock.quantity -= request.units;
-      
-      if (labStock.quantity === 0) {
-        await Blood.findByIdAndDelete(labStock._id);
-      } else {
-        await labStock.save();
+        if (!labStock || labStock.quantity < item.units) {
+          return res.status(400).json({
+            success: false,
+            message: `Insufficient stock for ${item.bloodType}. Available: ${labStock?.quantity || 0} units, Requested: ${item.units} units`
+          });
+        }
       }
 
       // Add to hospital stock (create or update)
@@ -713,6 +805,22 @@ status: "pending_testing",// This is the fix
 
     // Update request status
     request.status = action === "accept" ? "accepted" : "rejected";
+    if (action === "accept") {
+      request.handoverStatus = "received";
+      request.handoverTimeline.push({
+        status: "received",
+        label: HANDOVER_LABELS.received,
+        date: new Date(),
+        actor: labId,
+      });
+    } else {
+      request.handoverTimeline.push({
+        status: "rejected",
+        label: HANDOVER_LABELS.rejected,
+        date: new Date(),
+        actor: labId,
+      });
+    }
     request.processedAt = new Date();
     await request.save();
 
@@ -727,6 +835,107 @@ status: "pending_testing",// This is the fix
     res.status(500).json({ 
       success: false, 
       message: err.message || "Failed to process request" 
+    });
+  }
+};
+
+const HANDOVER_LABELS = {
+  requested: "Hospital sent request",
+  received: "Blood lab received request",
+  preparing: "Preparing blood units",
+  packed: "Blood units packed",
+  shipping: "Blood units in transit",
+  confirmed: "Hospital confirmed receipt",
+  rejected: "Request rejected",
+};
+
+/**
+ * @desc Update blood handover progress for an accepted request
+ * @route PATCH /api/blood-lab/blood/requests/:id/handover
+ * @access Private (Blood Lab)
+ */
+export const updateBloodHandoverStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { handoverStatus, note } = req.body;
+    const labId = req.user._id;
+
+    await applyExpiredRequestCancellations({ labId });
+
+    const validStatuses = ["received", "preparing", "packed", "shipping"];
+    if (!validStatuses.includes(handoverStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid handover status",
+      });
+    }
+
+    const request = await BloodRequest.findOne({ _id: id, labId }).populate(
+      "hospitalId",
+      "name"
+    );
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Request not found",
+      });
+    }
+
+    if (request.status !== "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: "Only accepted requests can be updated for handover",
+      });
+    }
+
+    if (handoverStatus === "shipping" && request.handoverStatus !== "shipping") {
+      await assertAndTransferRequestStock(request, labId);
+
+      await Facility.findByIdAndUpdate(request.hospitalId._id, {
+        $push: {
+          history: {
+            eventType: "Stock Update",
+            description: `Received ${formatBloodItems(getRequestItems(request))} from blood lab`,
+            date: new Date(),
+            referenceId: request._id,
+          },
+        },
+      });
+    }
+
+    request.handoverStatus = handoverStatus;
+    request.handoverTimeline.push({
+      status: handoverStatus,
+      label: HANDOVER_LABELS[handoverStatus],
+      date: new Date(),
+      actor: labId,
+      note,
+    });
+
+    await request.save();
+
+    await Facility.findByIdAndUpdate(labId, {
+      $push: {
+          history: {
+            eventType: "Stock Update",
+          description: `Updated handover for ${formatBloodItems(getRequestItems(request))} to ${handoverStatus}`,
+          date: new Date(),
+          referenceId: request._id,
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Blood handover status updated",
+      data: request,
+    });
+  } catch (err) {
+    console.error("Update Handover Status Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to update handover status",
     });
   }
 };

@@ -17,9 +17,12 @@ export const getDashboardStats = async (_req, res) => {
     const pendingFacilities = await Facility.countDocuments({ status: "pending" });
     const approvedFacilities = await Facility.countDocuments({ status: "approved" });
 
-    const donors = await Donor.find({}, "donationHistory bloodGroup eligibleToDonate");
-    const totalDonations = donors.reduce((sum, d) => sum + (d.donationHistory?.length || 0), 0);
-    const activeDonors = donors.filter((d) => d.eligibleToDonate).length;
+		const donors = await Donor.find({}, "donationHistory bloodGroup eligibleToDonate");
+		const totalDonations = donors.reduce(
+			(sum, donor) => sum + (donor.donationHistory?.length || 0),
+			0,
+		);
+		const activeDonors = donors.filter((d) => d.eligibleToDonate).length;
 
     const upcomingCamps = await BloodCamp.countDocuments({ status: { $in: ["Upcoming", "Ongoing"] } });
     const totalBloodUnits = await BloodModel.countDocuments({ status: "available" });
@@ -32,22 +35,30 @@ export const getDashboardStats = async (_req, res) => {
     });
     const pendingRequests = await BloodRequest.countDocuments({ status: "pending" });
 
-    const bloodTypeStats = {};
-    const bloodGroups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
-    bloodGroups.forEach((g) => { bloodTypeStats[g] = 0; });
-    donors.forEach((d) => {
-      if (d.bloodGroup && bloodTypeStats[d.bloodGroup] !== undefined) bloodTypeStats[d.bloodGroup]++;
-    });
+		// Blood type distribution
+		const bloodTypeStats = {};
+		const bloodGroups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
+		bloodGroups.forEach((g) => { bloodTypeStats[g] = 0; });
+		donors.forEach((d) => {
+			if (d.bloodGroup && bloodTypeStats[d.bloodGroup] !== undefined) {
+				bloodTypeStats[d.bloodGroup]++;
+			}
+		});
 
-    res.status(200).json({
-      totalDonors, totalFacilities, approvedFacilities, pendingFacilities,
-      totalDonations, activeDonors, upcomingCamps, bloodTypeStats,
-      totalBloodUnits, expiringSoon, pendingRequests,
-    });
-  } catch (err) {
-    console.error("Admin Stats Error:", err);
-    res.status(500).json({ message: "Failed to fetch stats" });
-  }
+		res.status(200).json({
+			totalDonors,
+			totalFacilities,
+			approvedFacilities,
+			pendingFacilities,
+			totalDonations,
+			activeDonors,
+			upcomingCamps,
+			bloodTypeStats,
+		});
+	} catch (err) {
+		console.error("Admin Stats Error:", err);
+		res.status(500).json({ message: "Failed to fetch stats" });
+	}
 };
 
 /* ==============================================================
@@ -135,29 +146,38 @@ export const getAllFacilities = async (req, res) => {
 };
 
 export const approveFacility = async (req, res) => {
-  try {
-    const facility = await Facility.findById(req.params.id);
-    if (!facility) return res.status(404).json({ message: "Facility not found" });
-    await Facility.updateOne({ _id: req.params.id }, { $set: { status: "approved", approvedAt: new Date() } });
-    const updated = await Facility.findById(req.params.id).select("-password");
-    res.status(200).json({ message: "Facility approved", facility: updated });
-  } catch (err) {
-    res.status(500).json({ message: "Error approving facility" });
-  }
+	try {
+		const facility = await Facility.findById(req.params.id);
+		if (!facility) return res.status(404).json({ message: "Facility not found" });
+
+		await Facility.updateOne(
+			{ _id: req.params.id },
+			{ $set: { status: "approved", approvedAt: new Date() } },
+		);
+		const updated = await Facility.findById(req.params.id);
+		res.status(200).json({ message: "Facility approved", facility: updated });
+	} catch (err) {
+		res.status(500).json({ message: "Error approving facility" });
+	}
 };
 
 export const rejectFacility = async (req, res) => {
-  try {
-    const facility = await Facility.findById(req.params.id);
-    if (!facility) return res.status(404).json({ message: "Facility not found" });
-    const { rejectionReason } = req.body;
-    if (!rejectionReason) return res.status(400).json({ message: "Rejection reason is required." });
-    await Facility.updateOne({ _id: req.params.id }, { $set: { status: "rejected", rejectionReason } });
-    const updated = await Facility.findById(req.params.id).select("-password");
-    res.status(200).json({ message: "Facility rejected", facility: updated });
-  } catch (err) {
-    res.status(500).json({ message: "Error rejecting facility" });
-  }
+	try {
+		const facility = await Facility.findById(req.params.id);
+		if (!facility) return res.status(404).json({ message: "Facility not found" });
+
+		const { rejectionReason } = req.body;
+		if (!rejectionReason) return res.status(400).json({ message: "Rejection reason is required." });
+
+		await Facility.updateOne(
+			{ _id: req.params.id },
+			{ $set: { status: "rejected", rejectionReason } },
+		);
+		const updated = await Facility.findById(req.params.id);
+		res.status(200).json({ message: "Facility rejected", facility: updated });
+	} catch (err) {
+		res.status(500).json({ message: "Error rejecting facility" });
+	}
 };
 
 export const deleteFacility = async (req, res) => {

@@ -9,11 +9,9 @@ import HealthDeclaration from '../models/HealthDeclaration.js';
 // Lấy danh sách camps
 export const getAvailableCamps = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const camps = await BloodCamp.find({ 
       status: "Upcoming",
-      date: { $gte: today }
+      date: { $gte: new Date() }
     })
     .populate("hospital", "name address phone")
     .sort({ date: 1 });

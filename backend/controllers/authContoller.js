@@ -4,12 +4,51 @@ import Facility from "../models/facilityModel.js";
 import Admin from "../models/adminModel.js";
 import jwt from "jsonwebtoken";
 
+const normalizeFacilityRole = (value = "") => {
+	const raw = String(value).toLowerCase();
+	if (raw.includes("blood") || raw.includes("lab") || raw.includes("xet") || raw.includes("xÃ©t")) return "blood-lab";
+	if (raw.includes("hospital") || raw.includes("benh") || raw.includes("bá»‡nh")) return "hospital";
+	return value;
+};
+
+const getHospitalStockAlerts = async (hospitalId) => {
+	const watchTypes = ["A+", "A-", "B+", "B-", "O+", "O-"];
+	const stock = await Blood.find({ hospital: hospitalId }).lean();
+	const now = new Date();
+	const alerts = [];
+
+	watchTypes.forEach((type) => {
+		const items = stock.filter((item) => (item.bloodGroup || item.bloodType) === type);
+		const validUnits = items
+			.filter((item) => {
+				const expiry = item.expiryDate || item.expirationDate;
+				return !expiry || new Date(expiry) > now;
+			})
+			.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+		const expiredUnits = items
+			.filter((item) => {
+				const expiry = item.expiryDate || item.expirationDate;
+				return expiry && new Date(expiry) <= now;
+			})
+			.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+		if (expiredUnits > 0) alerts.push({ type: "expired", bloodType: type, units: expiredUnits });
+		if (validUnits <= 0) alerts.push({ type: "out_of_stock", bloodType: type, units: 0 });
+	});
+
+	return alerts;
+};
+
 /**
  * REGISTER (Unified)
  */
 export const register = async (req, res) => {
 	try {
-		const { role } = req.body; // donor | hospital | blood-lab
+		const body = { ...req.body };
+		let { role } = body; // donor | hospital | blood-lab
+		role = normalizeFacilityRole(role || body.facilityType);
+		body.role = role;
+		if (role === "hospital" || role === "blood-lab") body.facilityType = role;
 
 		if (!role) {
 			return res.status(400).json({ message: "Role is required" });
@@ -39,7 +78,12 @@ export const register = async (req, res) => {
 		});
 	} catch (error) {
 		console.error("❌ Registration Error:", error);
-		res.status(500).json({ message: "Registration failed", error: error.message });
+		const duplicateField = Object.keys(error.keyPattern || {})[0];
+		if (error.code === 11000 && duplicateField) {
+			return res.status(409).json({ message: `${duplicateField} already exists`, error: error.message });
+		}
+		const status = error.name === "ValidationError" ? 400 : 500;
+		res.status(status).json({ message: "Registration failed", error: error.message });
 	}
 };
 
@@ -112,11 +156,14 @@ export const login = async (req, res) => {
 		else if (user.role === "blood-lab") redirect = "/lab";
 		else if (user.role === "admin" || user.role === "superadmin") redirect = "/admin";
 
+		const alerts = user.role === "hospital" ? await getHospitalStockAlerts(user._id) : [];
+
 		res.status(200).json({
 			success: true,
 			message: "Login successful",
 			token,
 			user: { id: user._id, email: user.email, role: user.role, status: user.status }, // ✅ status added
+			alerts,
 			redirect,
 		});
 	} catch (error) {

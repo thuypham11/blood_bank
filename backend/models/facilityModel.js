@@ -41,6 +41,17 @@ const facilitySchema = new mongoose.Schema(
 			city: { type: String }, // optional — frontend dùng ward từ location.js
 			ward: { type: String },
 			state: { type: String, required: [true, "State is required"] },
+			latitude: { type: Number },
+			longitude: { type: Number },
+			location: {
+				type: {
+					type: String,
+					enum: ["Point"],
+				},
+				coordinates: {
+					type: [Number],
+				},
+			},
 			pincode: {
 				type: String,
 				match: [/^[0-9]{6}$/, "Vui lòng nhập mã bưu chính hợp lệ 6 chữ số"],
@@ -131,6 +142,7 @@ const facilitySchema = new mongoose.Schema(
 							"Request Approved",
 							"Profile Update",
 							"Donation",
+							"Contact",
 						],
 					},
 					description: String,
