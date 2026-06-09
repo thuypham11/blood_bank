@@ -40,6 +40,13 @@ function GetAllDonors() {
 		sortOrder: "asc",
 	});
 
+	// CRUD States
+	const [showFormModal, setShowFormModal] = useState(false);
+	const [isEditing, setIsEditing] = useState(false);
+	const [formData, setFormData] = useState({
+		fullName: "", email: "", phone: "", bloodGroup: "", age: "", gender: "Male", eligibleToDonate: true, password: ""
+	});
+
 	const token = localStorage.getItem("token");
 	const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
@@ -77,6 +84,53 @@ function GetAllDonors() {
 		} finally {
 			setDetailLoading(false);
 		}
+	};
+
+	const handleDelete = async (id) => {
+		if (!window.confirm("Bạn có chắc chắn muốn xóa người hiến máu này?")) return;
+		try {
+			const res = await fetch(`${API_URL}/donor/${id}`, {
+				method: "DELETE",
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			if (!res.ok) throw new Error("Xóa thất bại (Chỉ Superadmin mới có quyền)");
+			toast.success("Đã xóa thành công");
+			fetchAllDonors();
+		} catch (err) {
+			toast.error(err.message);
+		}
+	};
+
+	const handleSubmitForm = async (e) => {
+		e.preventDefault();
+		try {
+			const url = isEditing ? `${API_URL}/donor/${formData._id}` : `${API_URL}/donors`;
+			const method = isEditing ? "PUT" : "POST";
+			const res = await fetch(url, {
+				method,
+				headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+				body: JSON.stringify(formData)
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.message || "Lỗi lưu dữ liệu");
+			toast.success(isEditing ? "Cập nhật thành công" : "Thêm mới thành công");
+			setShowFormModal(false);
+			fetchAllDonors();
+		} catch (err) {
+			toast.error(err.message);
+		}
+	};
+
+	const openAddForm = () => {
+		setIsEditing(false);
+		setFormData({ fullName: "", email: "", phone: "", bloodGroup: "", age: "", gender: "Male", eligibleToDonate: true, password: "" });
+		setShowFormModal(true);
+	};
+
+	const openEditForm = (donor) => {
+		setIsEditing(true);
+		setFormData({ ...donor, password: "" });
+		setShowFormModal(true);
 	};
 
 	useEffect(() => { fetchAllDonors(); }, []);
@@ -169,13 +223,20 @@ function GetAllDonors() {
 							<p className="text-gray-500 text-sm mt-0.5">Quản lý tất cả người hiến máu đã đăng ký</p>
 						</div>
 					</div>
-					<button
-						onClick={() => fetchAllDonors(true)}
-						disabled={refreshing}
-						className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
-						<RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-						{refreshing ? "Đang làm mới..." : "Làm mới"}
-					</button>
+					<div className="flex gap-2">
+						<button
+							onClick={() => fetchAllDonors(true)}
+							disabled={refreshing}
+							className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
+							<RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+							{refreshing ? "Đang làm mới..." : "Làm mới"}
+						</button>
+						<button
+							onClick={openAddForm}
+							className="flex items-center gap-2 px-4 py-2 bg-red-600 rounded-lg text-white hover:bg-red-700 transition-colors">
+							<span>+ Thêm mới</span>
+						</button>
+					</div>
 				</div>
 
 				{/* Thẻ thống kê */}
@@ -288,12 +349,24 @@ function GetAllDonors() {
 										<span className="line-clamp-1">{donor.address?.city || donor.address?.state || "Chưa có địa chỉ"}</span>
 									</div>
 								</div>
-								<button
-									onClick={() => fetchDonorDetail(donor._id)}
-									className="w-full flex items-center justify-center gap-2 py-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg transition-colors text-sm font-medium border border-red-200 hover:border-red-600">
-									<Eye size={14} />
-									Xem chi tiết
-								</button>
+								<div className="flex gap-2">
+									<button
+										onClick={() => openEditForm(donor)}
+										className="w-1/2 flex items-center justify-center gap-2 py-2 bg-gray-50 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium border border-gray-200">
+										Sửa
+									</button>
+									<button
+										onClick={() => fetchDonorDetail(donor._id)}
+										className="w-1/2 flex items-center justify-center gap-2 py-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg transition-colors text-sm font-medium border border-red-200 hover:border-red-600">
+										<Eye size={14} />
+										Chi tiết
+									</button>
+									<button
+										onClick={() => handleDelete(donor._id)}
+										className="px-3 flex items-center justify-center py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors border border-red-100" title="Xóa">
+										<X size={14} />
+									</button>
+								</div>
 							</div>
 						))}
 					</div>
@@ -434,6 +507,66 @@ function GetAllDonors() {
 								</div>
 							</>
 						)}
+					</div>
+				</div>
+			)}
+
+			{/* Modal Thêm/Sửa */}
+			{showFormModal && (
+				<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+					<div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+						<div className="flex justify-between items-center mb-4 border-b pb-2">
+							<h3 className="text-xl font-bold">{isEditing ? "Sửa người hiến máu" : "Thêm người hiến máu"}</h3>
+							<button onClick={() => setShowFormModal(false)}><X className="text-gray-500" /></button>
+						</div>
+						<form onSubmit={handleSubmitForm} className="space-y-4">
+							<div className="grid grid-cols-2 gap-4">
+								<div className="col-span-2">
+									<label className="block text-sm font-medium mb-1">Họ tên *</label>
+									<input required type="text" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								<div className="col-span-2">
+									<label className="block text-sm font-medium mb-1">Email *</label>
+									<input required type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								{!isEditing && (
+									<div className="col-span-2">
+										<label className="block text-sm font-medium mb-1">Mật khẩu</label>
+										<input type="text" placeholder="Mặc định: 123456" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border p-2 rounded" />
+									</div>
+								)}
+								<div>
+									<label className="block text-sm font-medium mb-1">Số điện thoại *</label>
+									<input required type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								<div>
+									<label className="block text-sm font-medium mb-1">Tuổi</label>
+									<input type="number" value={formData.age} onChange={e => setFormData({...formData, age: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								<div>
+									<label className="block text-sm font-medium mb-1">Nhóm máu</label>
+									<select value={formData.bloodGroup} onChange={e => setFormData({...formData, bloodGroup: e.target.value})} className="w-full border p-2 rounded">
+										<option value="">Chưa rõ</option>
+										{bloodGroups.map(g => <option key={g} value={g}>{g}</option>)}
+									</select>
+								</div>
+								<div>
+									<label className="block text-sm font-medium mb-1">Giới tính</label>
+									<select value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})} className="w-full border p-2 rounded">
+										<option value="Male">Nam</option>
+										<option value="Female">Nữ</option>
+									</select>
+								</div>
+								<div className="col-span-2 flex items-center gap-2 mt-2">
+									<input type="checkbox" id="eligible" checked={formData.eligibleToDonate} onChange={e => setFormData({...formData, eligibleToDonate: e.target.checked})} className="w-4 h-4" />
+									<label htmlFor="eligible" className="text-sm">Đủ điều kiện hiến máu</label>
+								</div>
+							</div>
+							<div className="flex justify-end gap-2 mt-6">
+								<button type="button" onClick={() => setShowFormModal(false)} className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200">Hủy</button>
+								<button type="submit" className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Lưu</button>
+							</div>
+						</form>
 					</div>
 				</div>
 			)}

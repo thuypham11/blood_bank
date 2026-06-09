@@ -33,6 +33,13 @@ const AdminBloodRequests = () => {
   const [actionLoading, setActionLoading] = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
 
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    hospitalId: "", labId: "", bloodType: "A+", units: 1, urgency: "normal"
+  });
+  const [facilities, setFacilities] = useState([]);
+
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -46,6 +53,9 @@ const AdminBloodRequests = () => {
       });
       setRequests(sorted);
       setFiltered(sorted);
+
+      const fRes = await axios.get("http://localhost:5000/api/admin/facilities", { headers });
+      if (fRes.data.facilities) setFacilities(fRes.data.facilities);
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tải dữ liệu");
     } finally {
@@ -58,6 +68,45 @@ const AdminBloodRequests = () => {
   useEffect(() => {
     setFiltered(filterStatus === "all" ? requests : requests.filter(r => r.status === filterStatus));
   }, [filterStatus, requests]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa yêu cầu này?")) return;
+    try {
+      await axios.delete(`http://localhost:5000/api/admin/blood-request/${id}`, { headers });
+      setSuccessMsg("Đã xóa thành công");
+      fetchRequests();
+    } catch (err) {
+      setError(err.response?.data?.message || "Xóa thất bại");
+    }
+  };
+
+  const handleSubmitForm = async (e) => {
+    e.preventDefault();
+    try {
+      if (isEditing) {
+        await axios.put(`http://localhost:5000/api/admin/blood-request/${formData._id}`, formData, { headers });
+      } else {
+        await axios.post(`http://localhost:5000/api/admin/blood-request`, formData, { headers });
+      }
+      setSuccessMsg(isEditing ? "Cập nhật thành công" : "Thêm mới thành công");
+      setShowFormModal(false);
+      fetchRequests();
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi lưu dữ liệu");
+    }
+  };
+
+  const openAddForm = () => {
+    setIsEditing(false);
+    setFormData({ hospitalId: "", labId: "", bloodType: "A+", units: 1, urgency: "normal" });
+    setShowFormModal(true);
+  };
+
+  const openEditForm = (req) => {
+    setIsEditing(true);
+    setFormData({ ...req, hospitalId: req.hospitalId?._id || req.hospitalId, labId: req.labId?._id || req.labId });
+    setShowFormModal(true);
+  };
 
   const handleApprove = async (id) => {
     setActionLoading(id + "_approve");
@@ -118,9 +167,14 @@ const AdminBloodRequests = () => {
           </h1>
           <p className="text-sm text-gray-500 mt-1">Duyệt và điều phối các yêu cầu máu từ bệnh viện.</p>
         </div>
-        <button onClick={fetchRequests} className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium text-gray-700 transition-all">
-          <RefreshCw size={16} /> Làm mới
-        </button>
+        <div className="flex gap-2">
+          <button onClick={fetchRequests} className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium text-gray-700 transition-all">
+            <RefreshCw size={16} /> Làm mới
+          </button>
+          <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-red-600 rounded-lg text-white hover:bg-red-700 transition-colors">
+            <span>+ Thêm mới</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -225,20 +279,20 @@ const AdminBloodRequests = () => {
                               className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-all disabled:opacity-60"
                             >
                               {actionLoading === req._id + "_approve" ? <Loader2 size={12} className="animate-spin"/> : <CheckSquare size={12}/>}
-                              Duyệt
                             </button>
                             <button
                               onClick={() => setRejectModal(req._id)}
                               className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-all"
                             >
-                              <XCircle size={12}/> Từ chối
+                              <XCircle size={12}/>
                             </button>
+                            <button onClick={() => openEditForm(req)} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs">Sửa</button>
+                            <button onClick={() => handleDelete(req._id)} className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-xs"><X size={12}/></button>
                           </div>
                         ) : (
-                          <div className="flex justify-center">
-                            <span className="text-xs text-gray-400 italic">
-                              {req.status === "accepted" ? "Đang xử lý" : req.status === "completed" ? "Đã xong" : "Đã từ chối"}
-                            </span>
+                          <div className="flex justify-center gap-2">
+                            <button onClick={() => openEditForm(req)} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs">Sửa</button>
+                            <button onClick={() => handleDelete(req._id)} className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-xs"><X size={12}/></button>
                           </div>
                         )}
                       </td>
@@ -279,6 +333,61 @@ const AdminBloodRequests = () => {
                 {actionLoading?.includes("_reject") ? "Đang xử lý..." : "Xác nhận Từ chối"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    {/* Form Modal Thêm/Sửa */}
+      {showFormModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4 border-b pb-2">
+              <h3 className="text-xl font-bold">{isEditing ? "Sửa Yêu cầu" : "Thêm Yêu cầu"}</h3>
+              <button onClick={() => setShowFormModal(false)}><X className="text-gray-500" /></button>
+            </div>
+            <form onSubmit={handleSubmitForm} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Bệnh viện yêu cầu *</label>
+                  <select required value={formData.hospitalId} onChange={e => setFormData({...formData, hospitalId: e.target.value})} className="w-full border p-2 rounded">
+                    <option value="">Chọn bệnh viện</option>
+                    {facilities.filter(f => f.facilityType === "hospital").map(f => (
+                      <option key={f._id} value={f._id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Trung tâm máu (Nhận) *</label>
+                  <select required value={formData.labId} onChange={e => setFormData({...formData, labId: e.target.value})} className="w-full border p-2 rounded">
+                    <option value="">Chọn trung tâm máu</option>
+                    {facilities.filter(f => f.facilityType === "blood-lab").map(f => (
+                      <option key={f._id} value={f._id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nhóm máu *</label>
+                  <select value={formData.bloodType} onChange={e => setFormData({...formData, bloodType: e.target.value})} className="w-full border p-2 rounded">
+                    {["A+","A-","B+","B-","AB+","AB-","O+","O-"].map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Số lượng (đơn vị) *</label>
+                  <input type="number" required min="1" value={formData.units} onChange={e => setFormData({...formData, units: e.target.value})} className="w-full border p-2 rounded" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Mức độ khẩn cấp</label>
+                  <select value={formData.urgency} onChange={e => setFormData({...formData, urgency: e.target.value})} className="w-full border p-2 rounded">
+                    <option value="normal">Bình thường</option>
+                    <option value="urgent">Khẩn cấp</option>
+                    <option value="critical">Cực kỳ khẩn cấp (Critical)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => setShowFormModal(false)} className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200">Hủy</button>
+                <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Lưu</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

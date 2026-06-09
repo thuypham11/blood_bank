@@ -87,16 +87,19 @@ export const getDonorById = async (req, res) => {
 
 export const updateDonor = async (req, res) => {
   try {
-    const { eligibleToDonate, isVerified } = req.body;
+    const updateData = { ...req.body };
+    if (updateData.password) {
+      delete updateData.password; // Don't allow password update here, or hash it if needed
+    }
     const donor = await Donor.findByIdAndUpdate(
       req.params.id,
-      { $set: { eligibleToDonate, isVerified } },
+      { $set: updateData },
       { new: true }
     ).select("-password");
     if (!donor) return res.status(404).json({ message: "Donor not found" });
     res.status(200).json({ success: true, donor });
   } catch (err) {
-    res.status(500).json({ message: "Error updating donor" });
+    res.status(500).json({ message: "Error updating donor", error: err.message });
   }
 };
 
@@ -450,13 +453,14 @@ export const getAllCamps = async (req, res) => {
 
     const total = await BloodCamp.countDocuments(filter);
     const camps = await BloodCamp.find(filter)
-      .populate("organizer", "name phone email")
+      .populate("hospital", "name phone email")
       .sort({ date: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
     res.status(200).json({ success: true, camps, total, totalPages: Math.ceil(total / limit) });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Error fetching blood camps" });
+    console.error("Error in getAllCamps:", err);
+    res.status(500).json({ success: false, message: "Error fetching blood camps", error: err.message });
   }
 };
 
@@ -699,3 +703,138 @@ function getDirSize(fs, dirPath) {
     return size;
   } catch { return 0; }
 }
+
+/* ==============================================================
+   EXTRA CRUD OPERATIONS FOR FULL ADMIN CONTROL
+   ============================================================== */
+
+export const createDonor = async (req, res) => {
+  try {
+    const data = { ...req.body };
+    if (!data.password) data.password = "123456"; // default password
+    const existing = await Donor.findOne({ email: data.email });
+    if (existing) return res.status(400).json({ success: false, message: "Email đã tồn tại" });
+    const donor = await Donor.create(data);
+    res.status(201).json({ success: true, message: "Thêm người hiến máu thành công", donor });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi thêm người hiến máu", error: err.message });
+  }
+};
+
+export const createFacility = async (req, res) => {
+  try {
+    const data = { ...req.body };
+    if (!data.password) data.password = "123456"; // default password
+    const existing = await Facility.findOne({ email: data.email });
+    if (existing) return res.status(400).json({ success: false, message: "Email đã tồn tại" });
+    if (!data.status) data.status = "approved"; // Admin created, default to approved
+    const facility = await Facility.create(data);
+    res.status(201).json({ success: true, message: "Thêm cơ sở y tế thành công", facility });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi thêm cơ sở y tế", error: err.message });
+  }
+};
+
+export const updateFacility = async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    if (updateData.password) delete updateData.password;
+    const facility = await Facility.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true }
+    ).select("-password");
+    if (!facility) return res.status(404).json({ success: false, message: "Không tìm thấy cơ sở y tế" });
+    res.status(200).json({ success: true, message: "Cập nhật thành công", facility });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi cập nhật", error: err.message });
+  }
+};
+
+export const createBloodRequest = async (req, res) => {
+  try {
+    const requestData = { ...req.body };
+    const request = await BloodRequest.create(requestData);
+    await AuditLog.create({
+      action: "CREATE_BLOOD_REQUEST",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "BloodRequest", targetId: request._id },
+      description: `Tạo yêu cầu máu: ${request.units} đơn vị ${request.bloodType}`,
+      ipAddress: req.ip,
+    });
+    res.status(201).json({ success: true, message: "Tạo yêu cầu máu thành công", request });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi tạo yêu cầu máu", error: err.message });
+  }
+};
+
+export const updateBloodRequest = async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    const request = await BloodRequest.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true }
+    );
+    if (!request) return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu máu" });
+    res.status(200).json({ success: true, message: "Cập nhật yêu cầu thành công", request });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi cập nhật yêu cầu", error: err.message });
+  }
+};
+
+export const deleteBloodRequest = async (req, res) => {
+  try {
+    const request = await BloodRequest.findByIdAndDelete(req.params.id);
+    if (!request) return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu" });
+    await AuditLog.create({
+      action: "DELETE_BLOOD_REQUEST",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "BloodRequest", targetId: request._id },
+      description: `Xóa yêu cầu máu: ${request.units} đơn vị ${request.bloodType}`,
+      ipAddress: req.ip,
+    });
+    res.status(200).json({ success: true, message: "Đã xóa yêu cầu cấp máu" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi xóa yêu cầu", error: err.message });
+  }
+};
+
+export const deleteBloodUnit = async (req, res) => {
+  try {
+    const unit = await BloodModel.findByIdAndDelete(req.params.id);
+    if (!unit) return res.status(404).json({ success: false, message: "Không tìm thấy đơn vị máu" });
+    await AuditLog.create({
+      action: "DELETE_BLOOD_UNIT",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "Blood", targetId: unit._id },
+      description: `Xóa đơn vị máu (${unit.barcode})`,
+      ipAddress: req.ip,
+    });
+    res.status(200).json({ success: true, message: "Đã xóa đơn vị máu" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi xóa đơn vị máu", error: err.message });
+  }
+};
+
+export const updateCamp = async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    const camp = await BloodCamp.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true }
+    );
+    if (!camp) return res.status(404).json({ success: false, message: "Không tìm thấy chiến dịch" });
+    await AuditLog.create({
+      action: "UPDATE_BLOOD_CAMP",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "BloodCamp", targetId: camp._id },
+      description: `Sửa thông tin chiến dịch: ${camp.title}`,
+      ipAddress: req.ip,
+    });
+    res.status(200).json({ success: true, message: "Cập nhật thông tin chiến dịch thành công", camp });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Lỗi cập nhật chiến dịch", error: err.message });
+  }
+};

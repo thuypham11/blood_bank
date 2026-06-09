@@ -25,6 +25,7 @@ const AdminBloodCamps = () => {
     venue: "", address: "", city: "", state: "",
     hospital: "", expectedDonors: 100, description: ""
   });
+  const [isEditing, setIsEditing] = useState(false);
 
   const token   = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -50,10 +51,10 @@ const AdminBloodCamps = () => {
     setFiltered(filterStatus === "all" ? camps : camps.filter(c => c.status === filterStatus));
   }, [filterStatus, camps]);
 
-  const handleCreate = async (e) => {
+  const handleSubmitForm = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("http://localhost:5000/api/admin/camps", {
+      const payload = {
         title: form.title,
         date: form.date,
         time: { start: form.timeStart, end: form.timeEnd },
@@ -61,13 +62,44 @@ const AdminBloodCamps = () => {
         hospital: form.hospital,
         expectedDonors: Number(form.expectedDonors),
         description: form.description
-      }, { headers });
-      setSuccessMsg("✅ Đã tạo chiến dịch hiến máu mới!");
+      };
+
+      if (isEditing) {
+        await axios.put(`http://localhost:5000/api/admin/camps/${form._id}`, payload, { headers });
+      } else {
+        await axios.post("http://localhost:5000/api/admin/camps", payload, { headers });
+      }
+      setSuccessMsg(isEditing ? "✅ Đã cập nhật chiến dịch hiến máu!" : "✅ Đã tạo chiến dịch hiến máu mới!");
       setShowCreateModal(false);
       setForm({ title: "", date: "", timeStart: "", timeEnd: "", venue: "", address: "", city: "", state: "", hospital: "", expectedDonors: 100, description: "" });
       fetchCamps();
-    } catch (err) { setError(err.response?.data?.message || "Lỗi tạo chiến dịch"); }
+    } catch (err) { setError(err.response?.data?.message || "Lỗi xử lý chiến dịch"); }
     finally { setTimeout(() => setSuccessMsg(""), 3000); }
+  };
+
+  const openAddForm = () => {
+    setIsEditing(false);
+    setForm({ title: "", date: "", timeStart: "", timeEnd: "", venue: "", address: "", city: "", state: "", hospital: "", expectedDonors: 100, description: "" });
+    setShowCreateModal(true);
+  };
+
+  const openEditForm = (camp) => {
+    setIsEditing(true);
+    setForm({
+      _id: camp._id,
+      title: camp.title,
+      date: camp.date ? camp.date.split("T")[0] : "",
+      timeStart: camp.time?.start || "",
+      timeEnd: camp.time?.end || "",
+      venue: camp.location?.venue || "",
+      address: camp.location?.address || "",
+      city: camp.location?.city || "",
+      state: camp.location?.state || "",
+      hospital: camp.hospital?._id || camp.hospital,
+      expectedDonors: camp.expectedDonors || 100,
+      description: camp.description || ""
+    });
+    setShowCreateModal(true);
   };
 
   const handleUpdateStatus = async (id, status) => {
@@ -101,7 +133,7 @@ const AdminBloodCamps = () => {
         </div>
         <div className="flex gap-2">
           <button onClick={fetchCamps} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-600"><RefreshCw size={16}/></button>
-          <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold">
+          <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold">
             <Plus size={16}/> Tạo Chiến Dịch
           </button>
         </div>
@@ -158,7 +190,7 @@ const AdminBloodCamps = () => {
                       <div className="font-bold text-gray-800 text-sm">{camp.title}</div>
                       <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{camp.description}</div>
                     </td>
-                    <td className="p-4 text-sm text-gray-600">{camp.organizer?.name || "N/A"}</td>
+                    <td className="p-4 text-sm text-gray-600">{camp.hospital?.name || "N/A"}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-1 text-xs text-gray-600 mb-1"><Clock size={11} className="text-blue-400"/>{new Date(camp.date).toLocaleDateString("vi-VN")}</div>
                       <div className="flex items-start gap-1 text-xs text-gray-500">
@@ -178,10 +210,16 @@ const AdminBloodCamps = () => {
                       <div className="flex items-center justify-end gap-1"><Users size={13} className="text-gray-400"/>{camp.expectedDonors}</div>
                     </td>
                     <td className="p-4 text-center">
-                      <button onClick={() => setStatusModal(camp)}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium mx-auto">
-                        <Edit3 size={12}/> Cập Nhật
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button onClick={() => setStatusModal(camp)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium">
+                          Trạng thái
+                        </button>
+                        <button onClick={() => openEditForm(camp)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-medium">
+                          <Edit3 size={12}/> Sửa
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -192,12 +230,12 @@ const AdminBloodCamps = () => {
         )}
       </div>
 
-      {/* Create Modal */}
+      {/* Create/Edit Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-8 p-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-5 flex items-center gap-2"><Plus className="text-red-600"/> Tạo Chiến Dịch Hiến Máu Mới</h3>
-            <form onSubmit={handleCreate} className="space-y-4">
+            <h3 className="text-lg font-bold text-gray-800 mb-5 flex items-center gap-2"><Plus className="text-red-600"/> {isEditing ? "Sửa Chiến Dịch Hiến Máu" : "Tạo Chiến Dịch Hiến Máu Mới"}</h3>
+            <form onSubmit={handleSubmitForm} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tên Chiến Dịch *</label>
                 <input required placeholder="VD: Lễ hội Xuân Hồng 2026" value={form.title} onChange={e => setForm(f => ({...f, title: e.target.value}))}
@@ -247,7 +285,7 @@ const AdminBloodCamps = () => {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-xl text-sm">Hủy</button>
-                <button type="submit" className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm">Tạo Chiến Dịch</button>
+                <button type="submit" className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm">{isEditing ? "Cập Nhật" : "Lưu"}</button>
               </div>
             </form>
           </div>

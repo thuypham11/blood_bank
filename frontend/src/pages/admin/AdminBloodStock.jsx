@@ -24,7 +24,8 @@ const AdminBloodStock = () => {
   const [labs, setLabs] = useState([]);
 
   const [filters, setFilters] = useState({ bloodGroup: "", status: "", page: 1, limit: 15 });
-  const [addForm, setAddForm] = useState({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "" });
+  const [isEditing, setIsEditing] = useState(false);
+  const [addForm, setAddForm] = useState({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available" });
 
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -64,13 +65,39 @@ const AdminBloodStock = () => {
   const handleAddUnit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("http://localhost:5000/api/admin/blood-stock/add", addForm, { headers });
-      setSuccessMsg("✅ Đã thêm đơn vị máu vào kho!");
+      if (isEditing) {
+        await axios.put(`http://localhost:5000/api/admin/blood-stock/${addForm._id}`, addForm, { headers });
+      } else {
+        await axios.post("http://localhost:5000/api/admin/blood-stock/add", addForm, { headers });
+      }
+      setSuccessMsg(isEditing ? "✅ Đã cập nhật đơn vị máu!" : "✅ Đã thêm đơn vị máu vào kho!");
       setShowAddModal(false);
-      setAddForm({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "" });
+      setAddForm({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available" });
       fetchOverview(); fetchUnits();
-    } catch (err) { setError(err.response?.data?.message || "Lỗi thêm đơn vị"); }
+    } catch (err) { setError(err.response?.data?.message || "Lỗi xử lý đơn vị"); }
     finally { setTimeout(() => setSuccessMsg(""), 3000); }
+  };
+
+  const handleDeleteUnit = async (id) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa đơn vị máu này?")) return;
+    try {
+      await axios.delete(`http://localhost:5000/api/admin/blood-stock/${id}`, { headers });
+      setSuccessMsg("✅ Đã xóa đơn vị máu!");
+      fetchOverview(); fetchUnits();
+    } catch (err) { setError(err.response?.data?.message || "Xóa thất bại (Chỉ Superadmin mới có quyền)"); }
+    finally { setTimeout(() => setSuccessMsg(""), 3000); }
+  };
+
+  const openAddForm = () => {
+    setIsEditing(false);
+    setAddForm({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available" });
+    setShowAddModal(true);
+  };
+
+  const openEditForm = (u) => {
+    setIsEditing(true);
+    setAddForm({ ...u, bloodLab: u.bloodLab?._id || u.bloodLab, collectionDate: u.collectionDate ? u.collectionDate.split("T")[0] : "" });
+    setShowAddModal(true);
   };
 
   const handleExportCSV = () => {
@@ -123,7 +150,7 @@ const AdminBloodStock = () => {
         </div>
         <div className="flex gap-3">
           <button onClick={fetchOverview} className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium text-gray-700"><RefreshCw size={14} /></button>
-          <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all">
+          <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all">
             <Plus size={16} /> Nhập Kho Mới
           </button>
         </div>
@@ -227,6 +254,7 @@ const AdminBloodStock = () => {
                     <th className="p-3 font-semibold text-center">Trạng Thái</th>
                     <th className="p-3 font-semibold">Thu Thập</th>
                     <th className="p-3 font-semibold">Hết Hạn</th>
+                    <th className="p-3 font-semibold text-center">Hành Động</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
                     {units.map(u => {
@@ -247,10 +275,16 @@ const AdminBloodStock = () => {
                               </span>
                             ) : "—"}
                           </td>
+                          <td className="p-3 text-center">
+                            <div className="flex justify-center gap-2">
+                              <button onClick={() => openEditForm(u)} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs text-gray-700">Sửa</button>
+                              <button onClick={() => handleDeleteUnit(u._id)} className="px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-xs text-red-600">Xóa</button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
-                    {units.length === 0 && <tr><td colSpan="7" className="p-8 text-center text-gray-400">Không có đơn vị máu nào.</td></tr>}
+                    {units.length === 0 && <tr><td colSpan="8" className="p-8 text-center text-gray-400">Không có đơn vị máu nào.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -274,41 +308,52 @@ const AdminBloodStock = () => {
         </>
       )}
 
-      {/* Add Modal */}
+      {/* Add/Edit Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-5 flex items-center gap-2"><Plus className="text-red-600" /> Nhập Kho Đơn Vị Máu Mới</h3>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-800 mb-5 flex items-center gap-2"><Plus className="text-red-600" /> {isEditing ? "Sửa Đơn Vị Máu" : "Nhập Kho Đơn Vị Máu Mới"}</h3>
             <form onSubmit={handleAddUnit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Nhóm Máu *</label>
-                <select required value={addForm.bloodGroup} onChange={e => setAddForm(f => ({ ...f, bloodGroup: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm">
-                  {BLOOD_GROUPS.map(bg => <option key={bg} value={bg}>{bg}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Thể Tích (ml) *</label>
-                <input type="number" min="100" max="500" required value={addForm.quantity}
-                  onChange={e => setAddForm(f => ({ ...f, quantity: Number(e.target.value) }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Nhóm Máu *</label>
+                  <select required value={addForm.bloodGroup} onChange={e => setAddForm(f => ({ ...f, bloodGroup: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm">
+                    {BLOOD_GROUPS.map(bg => <option key={bg} value={bg}>{bg}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Thể Tích (ml) *</label>
+                  <input type="number" min="100" max="500" required value={addForm.quantity}
+                    onChange={e => setAddForm(f => ({ ...f, quantity: Number(e.target.value) }))}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm" />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Kho Lưu Trữ *</label>
                 <select required value={addForm.bloodLab} onChange={e => setAddForm(f => ({ ...f, bloodLab: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm">
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm">
                   <option value="">-- Chọn Lab --</option>
                   {labs.map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Ngày Thu Thập</label>
-                <input type="date" value={addForm.collectionDate} onChange={e => setAddForm(f => ({ ...f, collectionDate: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Trạng Thái</label>
+                  <select value={addForm.status} onChange={e => setAddForm(f => ({ ...f, status: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm">
+                    {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Ngày Thu Thập</label>
+                  <input type="date" value={addForm.collectionDate} onChange={e => setAddForm(f => ({ ...f, collectionDate: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm" />
+                </div>
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-sm">Hủy</button>
-                <button type="submit" className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm">Nhập Kho</button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-sm">Hủy</button>
+                <button type="submit" className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm">{isEditing ? "Cập Nhật" : "Nhập Kho"}</button>
               </div>
             </form>
           </div>
