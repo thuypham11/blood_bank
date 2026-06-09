@@ -41,6 +41,14 @@ function GetAllFacilities() {
 		sortOrder: "asc",
 	});
 
+	// CRUD States
+	const [showFormModal, setShowFormModal] = useState(false);
+	const [isEditing, setIsEditing] = useState(false);
+	const [formData, setFormData] = useState({
+		name: "", email: "", phone: "", facilityType: "hospital",
+		registrationNumber: "", facilityCategory: "General", password: ""
+	});
+
 	const token = localStorage.getItem("token");
 
 	const facilityTypeLabels = { hospital: "Bệnh Viện", "blood-lab": "Trung Tâm Máu" };
@@ -107,6 +115,53 @@ function GetAllFacilities() {
 		} finally {
 			setActionLoading(false);
 		}
+	};
+
+	const handleDelete = async (id) => {
+		if (!window.confirm("Bạn có chắc chắn muốn xóa cơ sở y tế này?")) return;
+		try {
+			const res = await fetch(`${API_URL}/facility/${id}`, {
+				method: "DELETE",
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			if (!res.ok) throw new Error("Xóa thất bại (Chỉ Superadmin mới có quyền)");
+			toast.success("Đã xóa thành công");
+			fetchAllFacilities();
+		} catch (err) {
+			toast.error(err.message);
+		}
+	};
+
+	const handleSubmitForm = async (e) => {
+		e.preventDefault();
+		try {
+			const url = isEditing ? `${API_URL}/facility/${formData._id}` : `${API_URL}/facilities`;
+			const method = isEditing ? "PUT" : "POST";
+			const res = await fetch(url, {
+				method,
+				headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+				body: JSON.stringify(formData)
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.message || "Lỗi lưu dữ liệu");
+			toast.success(isEditing ? "Cập nhật thành công" : "Thêm mới thành công");
+			setShowFormModal(false);
+			fetchAllFacilities();
+		} catch (err) {
+			toast.error(err.message);
+		}
+	};
+
+	const openAddForm = () => {
+		setIsEditing(false);
+		setFormData({ name: "", email: "", phone: "", facilityType: "hospital", registrationNumber: "", facilityCategory: "General", password: "" });
+		setShowFormModal(true);
+	};
+
+	const openEditForm = (facility) => {
+		setIsEditing(true);
+		setFormData({ ...facility, password: "" });
+		setShowFormModal(true);
 	};
 
 	useEffect(() => { fetchAllFacilities(); }, []);
@@ -189,13 +244,20 @@ function GetAllFacilities() {
 							<p className="text-gray-500 text-sm mt-0.5">Quản lý tất cả cơ sở y tế đã đăng ký</p>
 						</div>
 					</div>
-					<button
-						onClick={() => fetchAllFacilities(true)}
-						disabled={refreshing}
-						className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
-						<RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-						{refreshing ? "Đang làm mới..." : "Làm mới"}
-					</button>
+					<div className="flex gap-2">
+						<button
+							onClick={() => fetchAllFacilities(true)}
+							disabled={refreshing}
+							className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
+							<RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+							{refreshing ? "Đang làm mới..." : "Làm mới"}
+						</button>
+						<button
+							onClick={openAddForm}
+							className="flex items-center gap-2 px-4 py-2 bg-red-600 rounded-lg text-white hover:bg-red-700 transition-colors">
+							<span>+ Thêm mới</span>
+						</button>
+					</div>
 				</div>
 
 				{/* Thẻ thống kê */}
@@ -314,12 +376,24 @@ function GetAllFacilities() {
 										<span className="line-clamp-1">{facility.address?.city || facility.address?.state || "—"}</span>
 									</div>
 								</div>
-								<button
-									onClick={() => { setSelectedFacility(facility); setRejectionReason(""); }}
-									className="w-full flex items-center justify-center gap-2 py-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg transition-colors text-sm font-medium border border-red-200 hover:border-red-600">
-									<Eye size={14} />
-									Xem chi tiết
-								</button>
+								<div className="flex gap-2 mt-4">
+									<button
+										onClick={() => openEditForm(facility)}
+										className="w-1/2 flex items-center justify-center gap-2 py-2 bg-gray-50 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium border border-gray-200">
+										Sửa
+									</button>
+									<button
+										onClick={() => { setSelectedFacility(facility); setRejectionReason(""); }}
+										className="w-1/2 flex items-center justify-center gap-2 py-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg transition-colors text-sm font-medium border border-red-200 hover:border-red-600">
+										<Eye size={14} />
+										Chi tiết
+									</button>
+									<button
+										onClick={() => handleDelete(facility._id)}
+										className="px-3 flex items-center justify-center py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors border border-red-100" title="Xóa">
+										<X size={14} />
+									</button>
+								</div>
 							</div>
 						))}
 					</div>
@@ -469,6 +543,59 @@ function GetAllFacilities() {
 								</div>
 							)}
 						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Modal Thêm/Sửa CSYT */}
+			{showFormModal && (
+				<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+					<div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+						<div className="flex justify-between items-center mb-4 border-b pb-2">
+							<h3 className="text-xl font-bold">{isEditing ? "Sửa cơ sở y tế" : "Thêm cơ sở y tế"}</h3>
+							<button onClick={() => setShowFormModal(false)}><X className="text-gray-500" /></button>
+						</div>
+						<form onSubmit={handleSubmitForm} className="space-y-4">
+							<div className="grid grid-cols-2 gap-4">
+								<div className="col-span-2">
+									<label className="block text-sm font-medium mb-1">Tên cơ sở *</label>
+									<input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								<div className="col-span-2">
+									<label className="block text-sm font-medium mb-1">Email *</label>
+									<input required type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								{!isEditing && (
+									<div className="col-span-2">
+										<label className="block text-sm font-medium mb-1">Mật khẩu</label>
+										<input type="text" placeholder="Mặc định: 123456" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border p-2 rounded" />
+									</div>
+								)}
+								<div>
+									<label className="block text-sm font-medium mb-1">Điện thoại *</label>
+									<input required type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								<div>
+									<label className="block text-sm font-medium mb-1">Mã đăng ký</label>
+									<input type="text" value={formData.registrationNumber} onChange={e => setFormData({...formData, registrationNumber: e.target.value})} className="w-full border p-2 rounded" />
+								</div>
+								<div>
+									<label className="block text-sm font-medium mb-1">Loại hình</label>
+									<select value={formData.facilityType} onChange={e => setFormData({...formData, facilityType: e.target.value})} className="w-full border p-2 rounded">
+										<option value="hospital">Bệnh viện</option>
+										<option value="blood-lab">Trung tâm máu</option>
+									</select>
+								</div>
+								<div>
+									<label className="block text-sm font-medium mb-1">Chuyên khoa</label>
+									<input type="text" value={formData.facilityCategory} onChange={e => setFormData({...formData, facilityCategory: e.target.value})} className="w-full border p-2 rounded" placeholder="VD: Đa khoa, Sản nhi..." />
+								</div>
+							</div>
+							<div className="flex justify-end gap-2 mt-6">
+								<button type="button" onClick={() => setShowFormModal(false)} className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200">Hủy</button>
+								<button type="submit" className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Lưu</button>
+							</div>
+						</form>
 					</div>
 				</div>
 			)}
