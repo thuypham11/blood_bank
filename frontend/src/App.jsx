@@ -32,6 +32,8 @@ import LabManageRequests from "./pages/bloodlab/LabManageRequests";
 import HospitalRequestBlood from "./pages/hospital/HospitalRequestBlood";
 import HospitalRequestHistory from "./pages/hospital/HospitalRequestHistory";
 import HospitalBloodStock from "./pages/hospital/HospitalBloodStock";
+import HospitalBloodUsage from "./pages/hospital/HospitalBloodUsage";
+import HospitalActivityLog from "./pages/hospital/HospitalActivityLog";
 import BloodLabDonor from "./pages/bloodlab/BloodLabDonor";
 import DonorDirectory from "./pages/hospital/DonorDirectory";
 import About from "./components/about/About";
@@ -86,7 +88,10 @@ function App() {
 				<Route path="blood-request-create" element={<HospitalRequestBlood />} />
 				<Route path="blood-request-history" element={<HospitalRequestHistory />} />
 				<Route path="inventory" element={<HospitalBloodStock />} />
+				<Route path="blood-usage" element={<HospitalBloodUsage />} />
+				<Route path="activity-log" element={<HospitalActivityLog />} />
 				<Route path="donors" element={<DonorDirectory />} />
+				<Route path="profile" element={<LabProfile />} />
 			</Route>
 
 			{/* Blood Lab Routes */}
