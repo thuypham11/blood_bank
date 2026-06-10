@@ -2,11 +2,13 @@ import bcrypt from "bcryptjs";
 import Donor from "../models/donorModel.js";
 import Facility from "../models/facilityModel.js";
 import Admin from "../models/adminModel.js";
+import Blood from "../models/BloodModel.js";
 import jwt from "jsonwebtoken";
 
 const normalizeFacilityRole = (value = "") => {
 	const raw = String(value).toLowerCase();
-	if (raw.includes("blood") || raw.includes("lab") || raw.includes("xet") || raw.includes("xÃ©t")) return "blood-lab";
+	if (raw.includes("blood") || raw.includes("lab") || raw.includes("xet") || raw.includes("xÃ©t"))
+		return "blood-lab";
 	if (raw.includes("hospital") || raw.includes("benh") || raw.includes("bá»‡nh")) return "hospital";
 	return value;
 };
@@ -80,7 +82,9 @@ export const register = async (req, res) => {
 		console.error("❌ Registration Error:", error);
 		const duplicateField = Object.keys(error.keyPattern || {})[0];
 		if (error.code === 11000 && duplicateField) {
-			return res.status(409).json({ message: `${duplicateField} already exists`, error: error.message });
+			return res
+				.status(409)
+				.json({ message: `${duplicateField} already exists`, error: error.message });
 		}
 		const status = error.name === "ValidationError" ? 400 : 500;
 		res.status(status).json({ message: "Registration failed", error: error.message });

@@ -6,38 +6,38 @@ const facilitySchema = new mongoose.Schema(
 		// 🏥 Basic Info
 		name: {
 			type: String,
-			required: [true, "Facility name is required"],
+			required: [true, "Tên hợp lệ"],
 			trim: true,
-			maxlength: [200, "Name cannot exceed 200 characters"],
+			maxlength: [200, "Tên không được quá 200 ký tự"],
 		},
 		email: {
 			type: String,
-			required: [true, "Email is required"],
+			required: [true, "Email hợp lệ"],
 			unique: true,
 			lowercase: true,
 			trim: true,
-			match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, "Please enter a valid email"],
+			match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, "Vui lòng nhập email hợp lệ"],
 		},
 		password: {
 			type: String,
-			required: [true, "Password is required"],
-			minlength: [6, "Password must be at least 6 characters"],
+			required: [true, "Mật khẩu hợp lệ"],
+			minlength: [6, "Mật khẩu ít nhất phải 6 ký tự"],
 			select: false,
 		},
 
 		// 📞 Contact Info
 		phone: {
 			type: String,
-			required: [true, "Phone number is required"],
+			required: [true, "Số điện thoại hợp lệ"],
 			match: [/^[0-9]{10}$/, "Vui lòng nhập số điện thoại hợp lệ 10 chữ số"],
 		},
 		emergencyContact: {
 			type: String,
-			required: [true, "Emergency contact number is required"],
-			match: [/^[0-9]{10}$/, "Vui lòng nhập số điện thoại hợp lệ 10 chữ số"],
+			required: [true, "Cuộc gọi khẩn cấp cần đủ 10 chữ số"],
+			match: [/^[0-9]{10}$/, "Vui lòng nhập đủ 10 chữ số"],
 		},
 		address: {
-			street: { type: String, required: [true, "Street address is required"] },
+			street: { type: String, required: [true, "Địa chỉ hợp lệ"] },
 			city: { type: String }, // optional — frontend dùng ward từ location.js
 			ward: { type: String },
 			state: { type: String, required: [true, "State is required"] },
@@ -61,7 +61,7 @@ const facilitySchema = new mongoose.Schema(
 		// 🧾 Facility Details
 		registrationNumber: {
 			type: String,
-			required: [true, "Registration number is required"],
+			required: [true, "Mã đăng ký hợp lệ"],
 			unique: true,
 			uppercase: true,
 			trim: true,
@@ -69,7 +69,7 @@ const facilitySchema = new mongoose.Schema(
 		facilityType: {
 			type: String,
 			enum: ["hospital", "blood-lab", "donation_staff"],
-			required: [true, "Facility type is required"],
+			required: [true, "Loại cơ sở y tế hợp lệ"],
 		},
 		role: {
 			type: String,
@@ -77,25 +77,14 @@ const facilitySchema = new mongoose.Schema(
 		},
 		facilityCategory: {
 			type: String,
-			enum: [
-				"Government",
-				"Private",
-				"Trust",
-				"Charity",
-				"Other",
-				"Nhà nước",
-				"Tư nhân",
-				"Tổ chức từ thiện",
-				"Phi lợi nhuận",
-				"Khác",
-			],
+			enum: ["Nhà nước", "Tư nhân", "Tổ chức từ thiện", "Phi lợi nhuận", "Khác"],
 			default: "Private",
 		},
 		assignedCamp: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "BloodCamp",
-  default: null,
-},
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "BloodCamp",
+			default: null,
+		},
 
 		// 📄 Documents & Verification
 		documents: {

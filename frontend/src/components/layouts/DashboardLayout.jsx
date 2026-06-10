@@ -106,15 +106,22 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 			icon: Building,
 			items: [
 				{ path: "/hospital", label: "Bảng Điều Khiển", icon: BarChart3, badge: null },
+				{ path: "/hospital/inventory", label: "Kho Máu", icon: Droplet, badge: null },
 				{
 					path: "/hospital/blood-request-create",
 					label: "Yêu Cầu Máu",
 					icon: ClipboardList,
 					badge: null,
 				},
-				{ path: "/hospital/inventory", label: "Kho Máu", icon: Droplet, badge: null },
+				{
+					path: "/hospital/blood-request-history",
+					label: "Theo dõi yêu cầu",
+					icon: Ambulance,
+					badge: null,
+				},
+				{ path: "/hospital/blood-usage", label: "Sử Dụng Máu", icon: ClipboardPlus, badge: null },
+				{ path: "/hospital/activity-log", label: "Nhật Ký Hoạt Động", icon: Activity, badge: null },
 				{ path: "/hospital/donors", label: "Người Hiến Máu", icon: User, badge: null },
-				{ path: "/hospital/blood-request-history", label: "Lịch Sử", icon: Ambulance, badge: null },
 			],
 		},
 		blood_lab: {
