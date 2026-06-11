@@ -1,11 +1,8 @@
-import Blood from "../models/BloodModel.js"
-import Facility from "../models/facilityModel.js"
-import BloodRequest from "../models/bloodRequestModel.js"
 import mongoose from "mongoose";
 import Blood from "../models/BloodModel.js";
-import BloodCamp from "../models/bloodCampModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
+import BloodCamp from "../models/bloodCampModel.js";
 
 const generateUnitcode = async () => {
     const now = new Date();
