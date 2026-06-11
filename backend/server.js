@@ -55,4 +55,16 @@ mongoose.connect(process.env.MONGO_URI)
 initSocketServer(server);
 
 const PORT = process.env.PORT || 5000;
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Retrying in 2s...`);
+    setTimeout(() => {
+      server.close();
+      server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT} 🚀`));
+    }, 2000);
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
+  }
+});
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT} 🚀`));
