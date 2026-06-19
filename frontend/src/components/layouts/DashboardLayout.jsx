@@ -24,7 +24,6 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 	ChevronRight,
 	Search,
 	Settings,
-	Loader2,
 	Clock,
 	MapPin,
 	Beaker,
@@ -32,12 +31,32 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 } from "lucide-react";
 import BloodChatbot from "../Chatbot/BloodChatbot";
 
+const decodeTokenPayload = (token) => {
+	try {
+		const payload = token?.split(".")?.[1];
+		return payload ? JSON.parse(atob(payload)) : null;
+	} catch {
+		return null;
+	}
+};
+
+const getInitialUserData = (userRole) => {
+	const tokenPayload = decodeTokenPayload(localStorage.getItem("token"));
+	const role = localStorage.getItem("role") || tokenPayload?.role || userRole;
+	return { role };
+};
+
+const rolesMatch = (actualRole, expectedRole) => {
+	const actual = actualRole?.toLowerCase();
+	const expected = expectedRole?.toLowerCase();
+	return actual === expected || (expected === "admin" && actual === "superadmin");
+};
+
 const DashboardLayout = ({ userRole = "donor" }) => {
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-	const [userData, setUserData] = useState(null);
+	const [userData, setUserData] = useState(() => getInitialUserData(userRole));
 	const [isScrolled, setIsScrolled] = useState(false);
-	const [isLoading, setIsLoading] = useState(true);
 
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -156,64 +175,56 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 
 	useEffect(() => {
 		const fetchUserData = async () => {
-			setIsLoading(true);
 			const token = localStorage.getItem("token");
 			if (!token) {
 				navigate("/login");
 				return;
 			}
 
-			const maxRetries = 3;
-			let attempt = 0;
-
-			while (attempt < maxRetries) {
-				try {
-					const res = await fetch("http://localhost:5000/api/auth/profile", {
-						headers: { Authorization: `Bearer ${token}` },
-					});
-
-					if (res.ok) {
-						const data = await res.json();
-						const user = data.user;
-
-						if (!user) {
-							throw new Error("Cấu trúc dữ liệu người dùng không hợp lệ.");
-						}
-
-						if (
-							user.role.toLowerCase() !== userRole.toLowerCase() &&
-							!(userRole.toLowerCase() === "admin" && user.role.toLowerCase() === "superadmin")
-						) {
-							console.error(`Vai trò không khớp: mong đợi ${userRole}, nhận được ${user.role}`);
-							localStorage.removeItem("token");
-							navigate("/login");
-							return;
-						}
-
-						setUserData(user);
-						setIsLoading(false);
-						return;
-					} else if (res.status === 401 || res.status === 403) {
-						console.error("Xác thực thất bại hoặc phiên đăng nhập hết hạn.");
-						localStorage.removeItem("token");
-						navigate("/login");
-						setIsLoading(false);
-						return;
-					}
-				} catch (error) {
-					console.error(`Lần thử ${attempt + 1}: Không thể tải dữ liệu người dùng.`, error);
-				}
-
-				attempt++;
-				if (attempt < maxRetries) {
-					await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-				}
+			const tokenRole = decodeTokenPayload(token)?.role || localStorage.getItem("role");
+			if (tokenRole && !rolesMatch(tokenRole, userRole)) {
+				console.error(`Vai trò không khớp: mong đợi ${userRole}, nhận được ${tokenRole}`);
+				localStorage.removeItem("token");
+				localStorage.removeItem("role");
+				navigate("/login");
+				return;
 			}
 
-			console.error("Tất cả các lần thử đều thất bại.");
-			localStorage.removeItem("token");
-			navigate("/login");
-			setIsLoading(false);
+			try {
+				const res = await fetch("http://localhost:5000/api/auth/profile", {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+
+				if (res.ok) {
+					const data = await res.json();
+					const user = data.user;
+
+					if (!user) {
+						throw new Error("Cấu trúc dữ liệu người dùng không hợp lệ.");
+					}
+
+					if (!rolesMatch(user.role, userRole)) {
+						console.error(`Vai trò không khớp: mong đợi ${userRole}, nhận được ${user.role}`);
+						localStorage.removeItem("token");
+						localStorage.removeItem("role");
+						navigate("/login");
+						return;
+					}
+
+					localStorage.setItem("role", user.role);
+					setUserData(user);
+					return;
+				}
+
+				if (res.status === 401 || res.status === 403) {
+					console.error("Xác thực thất bại hoặc phiên đăng nhập hết hạn.");
+					localStorage.removeItem("token");
+					localStorage.removeItem("role");
+					navigate("/login");
+				}
+			} catch (error) {
+				console.error("Không thể tải dữ liệu người dùng, tạm dùng dữ liệu trong token.", error);
+			}
 		};
 
 		fetchUserData();
@@ -248,17 +259,6 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 		if (badge === "Cao") return "bg-orange-500 text-white";
 		return "bg-blue-500 text-white";
 	};
-
-	if (isLoading) {
-		return (
-			<div className="min-h-screen flex items-center justify-center bg-gray-50">
-				<div className="flex flex-col items-center">
-					<Loader2 className="w-8 h-8 animate-spin text-red-600" />
-					<p className="mt-4 text-gray-600 font-semibold">Đang tải bảng điều khiển...</p>
-				</div>
-			</div>
-		);
-	}
 
 	return (
 		<div className="min-h-screen flex flex-col bg-gradient-to-br from-red-50 to-white">
