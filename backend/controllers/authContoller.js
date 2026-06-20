@@ -84,10 +84,12 @@ export const login = async (req, res) => {
 			// The code will now only proceed to create a token and redirect if the status is "approved" (or any other value not 'pending' or 'rejected').
 		}
 
-		const effectiveRole = user.role || user.facilityType;
+		const authenticatedRole = user instanceof Facility
+			? (user.role || user.facilityType)
+			: user.role;
 
 		// ✅ Create token
-		const token = jwt.sign({ id: user._id, role: effectiveRole }, process.env.JWT_SECRET, {
+		const token = jwt.sign({ id: user._id, role: authenticatedRole }, process.env.JWT_SECRET, {
 			expiresIn: "7d",
 		});
 
@@ -109,16 +111,16 @@ export const login = async (req, res) => {
 
 		// 🎯 Redirect logic
 		let redirect = "/";
-		if (effectiveRole === "donor") redirect = "/donor";
-		else if (effectiveRole === "hospital") redirect = "/hospital";
-		else if (effectiveRole === "blood-lab") redirect = "/lab";
-		else if (effectiveRole === "admin" || effectiveRole === "superadmin") redirect = "/admin";
+		if (authenticatedRole === "donor") redirect = "/donor";
+		else if (authenticatedRole === "hospital") redirect = "/hospital";
+		else if (authenticatedRole === "blood-lab") redirect = "/lab";
+		else if (authenticatedRole === "admin" || authenticatedRole === "superadmin") redirect = "/admin";
 
 		res.status(200).json({
 			success: true,
 			message: "Login successful",
 			token,
-			user: { id: user._id, email: user.email, role: effectiveRole, status: user.status }, // ✅ status added
+			user: { id: user._id, email: user.email, role: authenticatedRole, status: user.status }, // ✅ status added
 			redirect,
 		});
 	} catch (error) {
@@ -143,7 +145,7 @@ export const getProfile = async (req, res) => {
 
 		if (!user) return res.status(404).json({ message: "User not found" });
 
-		if (!user.role && user.facilityType) {
+		if (user instanceof Facility && !user.role) {
 			user = user.toObject();
 			user.role = user.facilityType;
 		}

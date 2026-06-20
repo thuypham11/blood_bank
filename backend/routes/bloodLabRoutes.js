@@ -1,20 +1,27 @@
 import express from "express";
 import {
-  createBloodUnit,
-  discardBloodUnit,
-  getAllLabs,
-  getBloodLabDashboard,
-  getBloodLabHistory,
-  getBloodStock,
-  getBloodUnits,
-  getLabBloodRequests,
-  importBloodUnitToStock,
-  issueBloodUnits,
-  updateBloodHandoverStatus,
-  updateBloodRequestStatus,
-  updateBloodUnitScreening,
+    createBloodUnit,
+    discardBloodUnit,
+    getAllLabs,
+    getBloodLabDashboard,
+    getBloodLabHistory,
+    getBloodStock,
+    getBloodUnitByBarcode,
+    getBloodUnitCodeImage,
+    getBloodUnits,
+    getLabBloodRequests,
+    importBloodUnitToStock,
+    issueBloodUnits,
+    splitBloodUnitComponents,
+    updateBloodHandoverStatus,
+    updateBloodRequestStatus,
+    updateBloodUnitScreening,
 } from "../controllers/bloodLabController.js";
-import { getRecentDonations, markDonation, searchDonor } from "../controllers/donorController.js";
+import {
+    getRecentDonations,
+    markDonation,
+    searchDonor,
+} from "../controllers/donorController.js";
 import { protectFacility } from "../middlewares/facilityMiddleware.js";
 
 const router = express.Router();
@@ -25,6 +32,9 @@ router.get("/history", protectFacility, getBloodLabHistory);
 router.get("/blood/stock", protectFacility, getBloodStock);
 router.get("/blood/units", protectFacility, getBloodUnits);
 router.post("/blood/units", protectFacility, createBloodUnit);
+router.get("/blood/units/barcode/:barcode", protectFacility, getBloodUnitByBarcode);
+router.get("/blood/units/:id/code", protectFacility, getBloodUnitCodeImage);
+router.post("/blood/units/:id/components", protectFacility, splitBloodUnitComponents);
 router.patch("/blood/units/issue", protectFacility, issueBloodUnits);
 router.patch("/blood/units/:id/screening", protectFacility, updateBloodUnitScreening);
 router.patch("/blood/units/:id/import", protectFacility, importBloodUnitToStock);
