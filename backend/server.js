@@ -24,6 +24,7 @@ import facilityRoutes from "./routes/facilityRoutes.js";
 import bloodLabRoutes from "./routes/bloodLabRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import donationStaffRoutes from './routes/donationStaffRoutes.js';
+import labStaffRoutes from './routes/labStaffRoutes.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -47,6 +48,7 @@ app.use("/api/donor", donorRoutes);
 app.use("/api/facility", facilityRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/blood-lab", bloodLabRoutes);
+app.use("/api/lab-staff", labStaffRoutes);
 app.use("/api/hospital", hospitalRoutes);
 app.use('/api/staff', staffRoutes);
 // Database connection

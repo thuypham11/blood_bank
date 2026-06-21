@@ -23,11 +23,16 @@ import {
     searchDonor,
 } from "../controllers/donorController.js";
 import { protectFacility } from "../middlewares/facilityMiddleware.js";
+import { createLabStaff, getLabStaff, updateLabStaff } from "../controllers/labStaffController.js";
 
 const router = express.Router();
 
 router.get("/dashboard", protectFacility, getBloodLabDashboard);
 router.get("/history", protectFacility, getBloodLabHistory);
+
+router.get("/staff", protectFacility, getLabStaff);
+router.post("/staff", protectFacility, createLabStaff);
+router.patch("/staff/:id", protectFacility, updateLabStaff);
 
 router.get("/blood/stock", protectFacility, getBloodStock);
 router.get("/blood/units", protectFacility, getBloodUnits);

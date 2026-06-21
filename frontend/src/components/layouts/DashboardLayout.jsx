@@ -128,6 +128,7 @@ const DashboardLayout = ({ userRole = "donor" }) => {
 				{ path: "/lab/Donor", label: "Người Hiến Máu", icon: User, badge: null },
 				/*{ path: "/lab/camps", label: "Điểm Hiến Máu", icon: Calendar, badge: null },*/
 				{ path: "/lab/requests", label: "Yêu Cầu", icon: ClipboardList, badge: null },
+				{ path: "/lab/staff", label: "Nhân Viên Xét Nghiệm", icon: Users, badge: null },
 				{ path: "/lab/profile", label: "Hồ Sơ", icon: CheckCircle, badge: null },
 			],
 		},
