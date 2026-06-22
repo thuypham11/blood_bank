@@ -3,11 +3,8 @@ import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import Donor from "../models/donorModel.js";
 import BloodUsage from "../models/bloodUsageModel.js";
-import {
-	BLOOD_TYPES,
-	formatProductItems,
-	normalizeProductItems,
-} from "../utils/bloodProducts.js";
+
+const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
 const HANDOVER_LABELS = {
 	requested: "Bệnh viện gửi yêu cầu",
@@ -31,6 +28,25 @@ const getRequestItems = (request) => {
 		return [{ bloodType: request.bloodType, units: request.units }];
 	}
 	return [];
+};
+
+const formatBloodItems = (items) =>
+	items.map((item) => `${item.units} units of ${item.bloodType}`).join(", ");
+
+const normalizeBloodItems = ({ bloodItems, bloodType, units }) => {
+	const items = Array.isArray(bloodItems) && bloodItems.length ? bloodItems : [{ bloodType, units }];
+
+	const merged = new Map();
+	items.forEach((item) => {
+		const type = String(item.bloodType || "")
+			.trim()
+			.toUpperCase();
+		const quantity = Number(item.units);
+		if (!BLOOD_TYPES.includes(type) || !Number.isFinite(quantity) || quantity < 1) return;
+		merged.set(type, (merged.get(type) || 0) + quantity);
+	});
+
+	return Array.from(merged, ([type, quantity]) => ({ bloodType: type, units: quantity }));
 };
 
 const applyExpiredRequestCancellations = async (filter = {}) => {
@@ -187,7 +203,7 @@ const markExpiredHospitalBlood = async (hospitalId) => {
 				$push: {
 					history: {
 						eventType: "Stock Update",
-						description: `${stock.quantity}ml ${stock.bloodGroup || stock.bloodType || stock.componentType} da het han trong kho mau cua benh vien.`,
+						description: `${stock.quantity} đơn vị máu ${stock.bloodGroup || stock.bloodType} đã hết hạn trong kho máu của bệnh viện.`,
 						date: now,
 					},
 				},
@@ -206,18 +222,18 @@ const markExpiredHospitalBlood = async (hospitalId) => {
 export const hospitalRequestBlood = async (req, res) => {
 	try {
 		const hospitalId = req.user._id;
-		const { labId, requestedDeliveryDate } = req.body;
-		const { bloodItems, componentItems } = normalizeProductItems(req.body);
+		const { labId, bloodType, units, bloodItems, requestedDeliveryDate } = req.body;
+		const normalizedItems = normalizeBloodItems({ bloodItems, bloodType, units });
 
 		// Validation
-		if (!labId || (bloodItems.length === 0 && componentItems.length === 0)) {
+		if (!labId || normalizedItems.length === 0) {
 			return res.status(400).json({
 				success: false,
 				message: "Vui lòng cung cấp mã số phòng thí nghiệm và ít nhất một mẫu máu hợp lệ.",
 			});
 		}
 
-		if (bloodItems.length > BLOOD_TYPES.length || componentItems.length > 3) {
+		if (normalizedItems.length > BLOOD_TYPES.length) {
 			return res.status(400).json({
 				success: false,
 				message: "Quá nhiều yêu cầu trong cùng 1 lúc",
@@ -259,8 +275,7 @@ export const hospitalRequestBlood = async (req, res) => {
 		const request = await BloodRequest.create({
 			hospitalId,
 			labId,
-			bloodItems,
-			componentItems,
+			bloodItems: normalizedItems,
 			requestedDeliveryDate: deliveryDate,
 			expiresAt: new Date(Date.now() + REQUEST_EXPIRY_MS),
 			handoverStatus: "requested",
@@ -279,7 +294,7 @@ export const hospitalRequestBlood = async (req, res) => {
 			$push: {
 				history: {
 					eventType: "Stock Update",
-					description: `Đã yêu cầu ${formatProductItems({ bloodItems, componentItems })} từ ${lab.name}`,
+					description: `Đã yêu cầu ${formatBloodItems(normalizedItems)} từ ${lab.name}`,
 					date: new Date(),
 					referenceId: request._id,
 				},
@@ -386,53 +401,6 @@ export const getHospitalStock = async (req, res) => {
 	}
 };
 
-const consumeStockLine = async ({ hospitalId, filter, label, quantity }) => {
-	const availableStock = await Blood.find({
-		hospital: hospitalId,
-		...filter,
-		status: { $ne: "expired" },
-		quantity: { $gt: 0 },
-	}).sort({ expiryDate: 1, expirationDate: 1 });
-
-	const availableUnits = availableStock.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-	if (availableUnits < quantity) {
-		throw new Error(`Khong du ${label} trong kho. Hien co: ${availableUnits}ml, yeu cau: ${quantity}ml.`);
-	}
-
-	let remaining = quantity;
-	for (const stock of availableStock) {
-		if (remaining <= 0) break;
-		const used = Math.min(stock.quantity, remaining);
-		stock.quantity -= used;
-		remaining -= used;
-
-		if (stock.quantity === 0) {
-			stock.status = "used";
-		}
-		await stock.save();
-	}
-};
-
-const consumeProductItems = async ({ hospitalId, bloodItems, componentItems }) => {
-	for (const item of bloodItems) {
-		await consumeStockLine({
-			hospitalId,
-			filter: { productType: "whole_blood", bloodGroup: item.bloodType },
-			label: `mau toan phan ${item.bloodType}`,
-			quantity: Number(item.volumeMl || item.units),
-		});
-	}
-
-	for (const item of componentItems) {
-		await consumeStockLine({
-			hospitalId,
-			filter: { productType: "blood_component", componentType: item.componentType },
-			label: `che pham ${item.componentType}`,
-			quantity: Number(item.volumeMl || item.units),
-		});
-	}
-};
-
 export const createBloodUsage = async (req, res) => {
 	try {
 		const hospitalId = req.user._id;
@@ -443,25 +411,52 @@ export const createBloodUsage = async (req, res) => {
 			patientPhone,
 			relativeName,
 			relativePhone,
+			bloodType,
+			units,
 			reason,
 		} = req.body;
-		const { bloodItems, componentItems } = normalizeProductItems(req.body);
-		const quantity = [...bloodItems, ...componentItems].reduce((sum, item) => sum + Number(item.volumeMl || item.units || 0), 0);
 
-		if (!usageDate || !usageTime || !patientName || (bloodItems.length === 0 && componentItems.length === 0) || !quantity || !reason) {
+		const quantity = Number(units);
+		if (!usageDate || !usageTime || !patientName || !bloodType || !quantity || !reason) {
 			return res.status(400).json({
 				success: false,
 				message: "Vui lòng cung cấp hạn sử dụng, thời gian, tên bệnh nhân, nhóm máu, đơn vị và lý do",
 			});
 		}
 
-		if (bloodItems.length > BLOOD_TYPES.length || componentItems.length > 3) {
+		if (!BLOOD_TYPES.includes(bloodType) || quantity < 1) {
 			return res.status(400).json({ success: false, message: "Nhóm máu hoặc đơn vị không hợp lệ" });
 		}
 
 		await markExpiredHospitalBlood(hospitalId);
 
-		await consumeProductItems({ hospitalId, bloodItems, componentItems });
+		const availableStock = await Blood.find({
+			hospital: hospitalId,
+			bloodGroup: bloodType,
+			status: { $ne: "expired" },
+			quantity: { $gt: 0 },
+		}).sort({ expiryDate: 1, expirationDate: 1 });
+
+		const availableUnits = availableStock.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+		if (availableUnits < quantity) {
+			return res.status(400).json({
+				success: false,
+				message: `Không đủ lượng máu ${bloodType} trong kho. Hiện có: ${availableUnits} đơn vị, yêu cầu: ${quantity} đơn vị.`,
+			});
+		}
+
+		let remaining = quantity;
+		for (const stock of availableStock) {
+			if (remaining <= 0) break;
+			const used = Math.min(stock.quantity, remaining);
+			stock.quantity -= used;
+			remaining -= used;
+
+			if (stock.quantity === 0) {
+				stock.status = "used";
+			}
+			await stock.save();
+		}
 
 		const usage = await BloodUsage.create({
 			hospital: hospitalId,
@@ -471,18 +466,16 @@ export const createBloodUsage = async (req, res) => {
 			patientPhone,
 			relativeName,
 			relativePhone,
-			bloodItems,
-			componentItems,
+			bloodType,
 			units: quantity,
 			reason,
 		});
-		const productSummary = formatProductItems({ bloodItems, componentItems });
 
 		await Facility.findByIdAndUpdate(hospitalId, {
 			$push: {
 				history: {
 					eventType: "Stock Update",
-					description: `Da xuat ${productSummary} de truyen cho benh nhan ${patientName}. Ly do: ${reason}`,
+					description: `Đã xuất ${quantity} đơn vị máu ${bloodType} để truyền cho bệnh nhân ${patientName}. Lý do: ${reason}`,
 					date: new Date(),
 				},
 			},
@@ -545,16 +538,12 @@ export const confirmBloodHandover = async (req, res) => {
 			actor: hospitalId,
 		});
 		await request.save();
-		const productSummary = formatProductItems({
-			bloodItems: request.bloodItems || [],
-			componentItems: request.componentItems || [],
-		});
 
 		await Facility.findByIdAndUpdate(hospitalId, {
 			$push: {
 				history: {
 					eventType: "Stock Update",
-					description: `Da nhan ${productSummary || request.bloodType} tu ${request.labId.name}.`,
+					description: `Đã nhận ${request.units} đơn vị máu ${request.bloodType} từ ${request.labId.name}.`,
 					date: new Date(),
 					referenceId: request._id,
 				},

@@ -15,7 +15,6 @@ import {
 	RefreshCw,
 } from "lucide-react";
 import axios from "axios";
-import { formatRequestProducts, productLabel } from "../../utils/bloodProducts";
 
 const HospitalDashboard = () => {
 	const [hospital, setHospital] = useState(null);
@@ -362,10 +361,10 @@ const HospitalDashboard = () => {
 											className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
 											<div className="flex items-center gap-3">
 												<span
-													className={`px-3 py-1 rounded-full text-sm font-medium ${getBloodTypeColor(item.bloodGroup || item.componentType)}`}>
-													{productLabel(item)}
+													className={`px-3 py-1 rounded-full text-sm font-medium ${getBloodTypeColor(item.bloodGroup)}`}>
+													{item.bloodGroup}
 												</span>
-												<span className="text-lg font-semibold">{item.quantity}ml</span>
+												<span className="text-lg font-semibold">{item.quantity} đơn vị</span>
 											</div>
 											<div className="flex items-center gap-2">
 												<StatusIcon size={16} className={status.color.replace("bg-", "text-").split(" ")[0]} />
@@ -405,9 +404,9 @@ const HospitalDashboard = () => {
 										key={request._id}
 										className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
 										<div>
-											<div className="font-medium text-gray-800">{formatRequestProducts(request)}</div>
+											<div className="font-medium text-gray-800">{request.bloodType}</div>
 											<div className="text-sm text-gray-600">
-												{request.units}ml • {request.labId?.name || "Ngân hàng không xác định"}
+												{request.units} đơn vị • {request.labId?.name || "Ngân hàng không xác định"}
 											</div>
 										</div>
 										<span
