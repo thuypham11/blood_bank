@@ -48,7 +48,62 @@ app.use("/api/hospital", hospitalRoutes);
 
 // Database connection
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected ✅"))
+  .then(async () => {
+    console.log("MongoDB Connected ✅");
+
+    // ============================================================
+    // AUTO STATUS UPDATER — Chạy mỗi 60 giây
+    // Upcoming → Ongoing (khi đến ngày tổ chức)
+    // Ongoing  → Completed (khi qua ngày tổ chức)
+    // ============================================================
+    const { default: BloodCamp } = await import("./models/bloodCampModel.js");
+
+    const autoUpdateCampStatus = async () => {
+      try {
+        const now = new Date();
+        const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+        const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+
+        // Upcoming → Ongoing: ngày tổ chức = hôm nay
+        const toOngoing = await BloodCamp.updateMany(
+          { status: "Upcoming", date: { $gte: todayStart, $lte: todayEnd } },
+          { $set: { status: "Ongoing" } }
+        );
+
+        // Ongoing → Completed: ngày tổ chức < hôm nay (đã qua)
+        const toCompleted = await BloodCamp.updateMany(
+          { status: "Ongoing", date: { $lt: todayStart } },
+          { $set: { status: "Completed" } }
+        );
+
+        // Upcoming đã qua ngày mà chưa được xử lý → Completed
+        const upcomingPast = await BloodCamp.updateMany(
+          { status: "Upcoming", date: { $lt: todayStart } },
+          { $set: { status: "Completed" } }
+        );
+
+        const totalChanged = toOngoing.modifiedCount + toCompleted.modifiedCount + upcomingPast.modifiedCount;
+        if (totalChanged > 0) {
+          console.log(`⏰ AutoStatus: ${toOngoing.modifiedCount} → Ongoing, ${toCompleted.modifiedCount + upcomingPast.modifiedCount} → Completed`);
+          // Broadcast cho tất cả clients
+          try {
+            const { getIO } = await import("./socket/index.js");
+            getIO().emit("campStatusUpdated", {
+              message: "Trạng thái chiến dịch đã được cập nhật",
+              timestamp: new Date().toISOString(),
+            });
+          } catch (_) {}
+        }
+      } catch (err) {
+        console.error("AutoStatus error:", err.message);
+      }
+    };
+
+    // Chạy ngay khi khởi động
+    autoUpdateCampStatus();
+    // Chạy mỗi 60 giây
+    setInterval(autoUpdateCampStatus, 60 * 1000);
+  })
   .catch((err) => console.log("MongoDB Error ❌", err));
 
 // Socket.io

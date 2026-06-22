@@ -143,9 +143,9 @@ export default function Login() {
 							? "/lab"
 							: role === "admin"
 								? "/admin"
-								: role === "donation_staff"
-								? "/staff"
-								: "/");
+								: role === "staff"
+									? "/staff"
+									: "/");
 			navigate(targetPath, { replace: true });
 		} catch (err) {
 			setError(err.message);

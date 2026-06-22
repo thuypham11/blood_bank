@@ -21,24 +21,22 @@ const bloodCampSchema = new mongoose.Schema(
       required: [true, "Camp date is required"],
     },
     time: {
-      start: { type: String, required: [true, "Start time is required"] },
-      end: { type: String, required: [true, "End time is required"] },
+      start: { type: String },
+      end:   { type: String },
     },
     location: {
-      venue: { type: String, required: [true, "Venue name is required"] },
-      city: { type: String, required: [true, "City is required"] },
-      state: { type: String, required: [true, "State is required"] },
-      pincode: {
-        type: String,
-        match: [/^[1-9][0-9]{5}$/, "Please enter a valid 6-digit pincode"],
+      venue:   { type: String, required: [true, "Venue name is required"] },
+      address: { type: String },
+      city:    { type: String, required: [true, "City is required"] },
+      state:   { type: String },
+      coordinates: {
+        lat: { type: Number, default: 10.7769 },
+        lng: { type: Number, default: 106.7009 },
       },
-        coordinates: {
-    lat: { type: Number, required: true },   // vĩ độ
-    lng: { type: Number, required: true }    // kinh độ
-  }
     },
+    organizer:      { type: String },
     expectedDonors: { type: Number, default: 0 },
-    actualDonors: { type: Number, default: 0 },
+    actualDonors:   { type: Number, default: 0 },
     status: {
       type: String,
       enum: ["Upcoming", "Ongoing", "Completed", "Cancelled"],
