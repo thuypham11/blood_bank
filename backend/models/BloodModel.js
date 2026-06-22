@@ -39,6 +39,10 @@ const bloodSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Facility",
     },
+    donor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Donor",
+    },
   screeningResult: {
       hiv: {
         type: String,

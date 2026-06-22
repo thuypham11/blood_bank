@@ -55,6 +55,8 @@ import {
   // Backup
   backupDatabase,
   getBackupList,
+  // Data Sync
+  syncBloodUnitsWithDonors,
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -124,5 +126,8 @@ router.get("/notifications/history", protect, requireRole("superadmin"), getNoti
 // ── Backup & Settings ─────────────────────────────────────────
 router.post("/backup", protect, requireRole("superadmin"), backupDatabase);
 router.get("/backups/list", protect, requireRole("superadmin"), getBackupList);
+
+// ── Data Sync ─────────────────────────────────────────────────
+router.post("/sync-blood-donors", protect, syncBloodUnitsWithDonors);
 
 export default router;
