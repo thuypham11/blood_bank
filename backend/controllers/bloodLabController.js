@@ -3,6 +3,7 @@ import Blood from "../models/BloodModel.js";
 import BloodCamp from "../models/bloodCampModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
+import { COMPONENT_LABELS, formatProductItems } from "../utils/bloodProducts.js";
 
 const getRequestItems = (request) => {
   if (request.bloodItems?.length) return request.bloodItems;
@@ -12,8 +13,13 @@ const getRequestItems = (request) => {
   return [];
 };
 
-const formatBloodItems = (items) =>
-  items.map((item) => `${item.units} units of ${item.bloodType}`).join(", ");
+const getRequestComponentItems = (request) => request.componentItems || [];
+
+const formatRequestProducts = (request) =>
+  formatProductItems({
+    bloodItems: getRequestItems(request),
+    componentItems: getRequestComponentItems(request),
+  });
 
 const applyExpiredRequestCancellations = async (filter = {}) => {
   const now = new Date();
@@ -38,32 +44,62 @@ const applyExpiredRequestCancellations = async (filter = {}) => {
   }));
 };
 
-const assertAndTransferRequestStock = async (request, labId) => {
-  const items = getRequestItems(request);
-  const labStocks = [];
+const getProductLines = (request) => [
+  ...getRequestItems(request).map((item) => ({
+    productType: "whole_blood",
+    key: item.bloodType,
+    label: `whole blood ${item.bloodType}`,
+    quantity: Number(item.volumeMl || item.units || 0),
+    stockFilter: { productType: "whole_blood", bloodGroup: item.bloodType },
+    createFields: { productType: "whole_blood", bloodGroup: item.bloodType, bloodType: item.bloodType },
+  })),
+  ...getRequestComponentItems(request).map((item) => ({
+    productType: "blood_component",
+    key: item.componentType,
+    label: `component ${COMPONENT_LABELS[item.componentType] || item.componentType}`,
+    quantity: Number(item.volumeMl || item.units || 0),
+    stockFilter: { productType: "blood_component", componentType: item.componentType },
+    createFields: { productType: "blood_component", componentType: item.componentType },
+  })),
+];
 
-  for (const item of items) {
-    const labStock = await Blood.findOne({
-      $or: [{ bloodLab: labId }, { hospital: labId }],
-      bloodGroup: item.bloodType,
-    });
+const findAvailableStock = async ({ labId, stockFilter }) =>
+  Blood.find({
+    $or: [{ bloodLab: labId }, { hospital: labId }],
+    ...stockFilter,
+    status: { $ne: "expired" },
+    quantity: { $gt: 0 },
+  }).sort({ expiryDate: 1, expirationDate: 1 });
 
-    if (!labStock || labStock.quantity < item.units) {
-      throw new Error(
-        `Insufficient stock for ${item.bloodType}. Available: ${labStock?.quantity || 0} units, Requested: ${item.units} units`
-      );
+const assertRequestStockAvailability = async (request, labId) => {
+  for (const line of getProductLines(request)) {
+    const labStocks = await findAvailableStock({ labId, stockFilter: line.stockFilter });
+    const available = labStocks.reduce((sum, stock) => sum + Number(stock.quantity || 0), 0);
+    if (available < line.quantity) {
+      throw new Error(`Insufficient stock for ${line.label}. Available: ${available}ml, Requested: ${line.quantity}ml`);
     }
-
-    labStocks.push({ item, labStock });
   }
+};
 
-  for (const { item, labStock } of labStocks) {
-    labStock.quantity -= item.units;
+const assertAndTransferRequestStock = async (request, labId) => {
+  const lines = getProductLines(request);
+  await assertRequestStockAvailability(request, labId);
 
-    if (labStock.quantity === 0) {
-      await Blood.findByIdAndDelete(labStock._id);
-    } else {
-      await labStock.save();
+  for (const line of lines) {
+    const labStocks = await findAvailableStock({ labId, stockFilter: line.stockFilter });
+    let remaining = line.quantity;
+
+    for (const labStock of labStocks) {
+      if (remaining <= 0) break;
+      const used = Math.min(labStock.quantity, remaining);
+      labStock.quantity -= used;
+      remaining -= used;
+
+      if (labStock.quantity === 0) {
+        await Blood.findByIdAndDelete(labStock._id);
+      } else {
+        await labStock.save();
+      }
     }
 
     const expiryDate = new Date();
@@ -71,18 +107,17 @@ const assertAndTransferRequestStock = async (request, labId) => {
 
     const hospitalStock = await Blood.findOne({
       hospital: request.hospitalId._id,
-      bloodGroup: item.bloodType,
+      ...line.stockFilter,
     });
 
     if (hospitalStock) {
-      hospitalStock.quantity += item.units;
+      hospitalStock.quantity += line.quantity;
       hospitalStock.expiryDate = expiryDate;
       await hospitalStock.save();
     } else {
       await Blood.create({
-        bloodGroup: item.bloodType,
-        bloodType: item.bloodType,
-        quantity: item.units,
+        ...line.createFields,
+        quantity: line.quantity,
         expiryDate,
         hospital: request.hospitalId._id,
         screeningResult: {
@@ -720,59 +755,18 @@ export const updateBloodRequestStatus = async (req, res) => {
       });
     }
 
-    const items = getRequestItems(request);
+    const productSummary = formatRequestProducts(request);
 
     // If accepting, check stock availability. Stock is transferred when shipping starts.
     if (action === "accept") {
-      for (const item of items) {
-        const labStock = await Blood.findOne({
-          $or: [{ bloodLab: labId }, { hospital: labId }],
-          bloodGroup: item.bloodType
-        });
-
-        if (!labStock || labStock.quantity < item.units) {
-          return res.status(400).json({
-            success: false,
-            message: `Insufficient stock for ${item.bloodType}. Available: ${labStock?.quantity || 0} units, Requested: ${item.units} units`
-          });
-        }
-      }
-
-      // Add to hospital stock (create or update)
-      const hospitalStock = await Blood.findOne({
-        hospital: request.hospitalId._id,
-        bloodGroup: request.bloodType
-      });
-
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 42); // 42 days expiry
-
-      if (hospitalStock) {
-        hospitalStock.quantity += request.units;
-        hospitalStock.expiryDate = expiryDate;
-        await hospitalStock.save();
-      } else {
-        // FIX: Use hospital field instead of bloodLab
-        await Blood.create({
-          bloodGroup: request.bloodType,
-          quantity: request.units,
-          expiryDate,
-          hospital: request.hospitalId._id,
-          screeningResult: {
-           hiv: "pending",
-           hbv: "pending",
-           hcv: "pending",
-          },
-status: "pending_testing",// This is the fix
-        });
-      }
+      await assertRequestStockAvailability(request, labId);
 
       // Add history to both facilities
       await Facility.findByIdAndUpdate(labId, {
         $push: {
           history: {
             eventType: "Stock Update",
-            description: `Transferred ${request.units} units of ${request.bloodType} to ${request.hospitalId.name}`,
+            description: `Accepted request for ${productSummary} from ${request.hospitalId.name}`,
             date: new Date(),
             referenceId: request._id,
           },
@@ -783,7 +777,7 @@ status: "pending_testing",// This is the fix
         $push: {
           history: {
             eventType: "Stock Update",
-            description: `Received ${request.units} units of ${request.bloodType} from blood lab`,
+            description: `Blood lab accepted request for ${productSummary}`,
             date: new Date(),
             referenceId: request._id,
           },
@@ -795,7 +789,7 @@ status: "pending_testing",// This is the fix
         $push: {
           history: {
             eventType: "Stock Update",
-            description: `Rejected blood request for ${request.units} units of ${request.bloodType} from ${request.hospitalId.name}`,
+            description: `Rejected blood request for ${productSummary} from ${request.hospitalId.name}`,
             date: new Date(),
             referenceId: request._id,
           },
@@ -896,7 +890,7 @@ export const updateBloodHandoverStatus = async (req, res) => {
         $push: {
           history: {
             eventType: "Stock Update",
-            description: `Received ${formatBloodItems(getRequestItems(request))} from blood lab`,
+            description: `Received ${formatRequestProducts(request)} from blood lab`,
             date: new Date(),
             referenceId: request._id,
           },
@@ -919,7 +913,7 @@ export const updateBloodHandoverStatus = async (req, res) => {
       $push: {
           history: {
             eventType: "Stock Update",
-          description: `Updated handover for ${formatBloodItems(getRequestItems(request))} to ${handoverStatus}`,
+          description: `Updated handover for ${formatRequestProducts(request)} to ${handoverStatus}`,
           date: new Date(),
           referenceId: request._id,
         },

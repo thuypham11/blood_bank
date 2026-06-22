@@ -1,7 +1,7 @@
-// models/bloodRequestModel.js
 import mongoose from "mongoose";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
+const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells"];
 
 const bloodItemSchema = new mongoose.Schema(
 	{
@@ -13,6 +13,30 @@ const bloodItemSchema = new mongoose.Schema(
 		units: {
 			type: Number,
 			required: true,
+			min: 1,
+		},
+		volumeMl: {
+			type: Number,
+			min: 1,
+		},
+	},
+	{ _id: false },
+);
+
+const componentItemSchema = new mongoose.Schema(
+	{
+		componentType: {
+			type: String,
+			required: true,
+			enum: BLOOD_COMPONENTS,
+		},
+		units: {
+			type: Number,
+			required: true,
+			min: 1,
+		},
+		volumeMl: {
+			type: Number,
 			min: 1,
 		},
 	},
@@ -40,12 +64,11 @@ const bloodRequestSchema = new mongoose.Schema(
 		},
 		bloodItems: {
 			type: [bloodItemSchema],
-			validate: {
-				validator(items) {
-					return Array.isArray(items) && items.length > 0;
-				},
-				message: "Cần ít nhất một nhóm máu.",
-			},
+			default: [],
+		},
+		componentItems: {
+			type: [componentItemSchema],
+			default: [],
 		},
 		status: {
 			type: String,
@@ -91,14 +114,22 @@ const bloodRequestSchema = new mongoose.Schema(
 
 bloodRequestSchema.pre("validate", function (next) {
 	if ((!this.bloodItems || this.bloodItems.length === 0) && this.bloodType && this.units) {
-		this.bloodItems = [{ bloodType: this.bloodType, units: this.units }];
+		this.bloodItems = [{ bloodType: this.bloodType, units: this.units, volumeMl: this.units }];
 	}
 
-	if (this.bloodItems?.length) {
-		const totalUnits = this.bloodItems.reduce((sum, item) => sum + Number(item.units || 0), 0);
-		this.bloodType = this.bloodItems.map((item) => item.bloodType).join(", ");
-		this.units = totalUnits;
+	const bloodItems = this.bloodItems || [];
+	const componentItems = this.componentItems || [];
+
+	if (!bloodItems.length && !componentItems.length) {
+		return next(new Error("Can request at least one whole blood group or blood component."));
 	}
+
+	const totalUnits = [...bloodItems, ...componentItems].reduce(
+		(sum, item) => sum + Number(item.units || item.volumeMl || 0),
+		0,
+	);
+	this.bloodType = [...bloodItems.map((item) => item.bloodType), ...componentItems.map((item) => item.componentType)].join(", ");
+	this.units = totalUnits;
 
 	next();
 });

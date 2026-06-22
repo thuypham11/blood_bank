@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
 
+const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells"];
+
 const bloodSchema = new mongoose.Schema(
   {
     barcode: {
@@ -7,14 +10,22 @@ const bloodSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    productType: {
+      type: String,
+      enum: ["whole_blood", "blood_component"],
+      default: "whole_blood",
+    },
+    componentType: {
+      type: String,
+      enum: BLOOD_COMPONENTS,
+    },
     bloodGroup: {
       type: String,
-      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-      required: true,
+      enum: BLOOD_GROUPS,
     },
     bloodType: {
       type: String,
-      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+      enum: BLOOD_GROUPS,
     },
     quantity: {
       type: Number,
@@ -68,10 +79,19 @@ const bloodSchema = new mongoose.Schema(
 
 // Pre-save middleware to set expiration date (42 days after collection)
 bloodSchema.pre("save", function (next) {
-  if (!this.bloodType && this.bloodGroup) {
+  if (!this.productType) {
+    this.productType = this.componentType ? "blood_component" : "whole_blood";
+  }
+  if (this.productType === "whole_blood" && !this.bloodGroup && !this.bloodType) {
+    return next(new Error("Blood group is required for whole blood stock"));
+  }
+  if (this.productType === "blood_component" && !this.componentType) {
+    return next(new Error("Component type is required for blood component stock"));
+  }
+  if (this.productType === "whole_blood" && !this.bloodType && this.bloodGroup) {
     this.bloodType = this.bloodGroup;
   }
-  if (!this.bloodGroup && this.bloodType) {
+  if (this.productType === "whole_blood" && !this.bloodGroup && this.bloodType) {
     this.bloodGroup = this.bloodType;
   }
   if (this.collectionDate && !this.expirationDate && !this.expiryDate) {
