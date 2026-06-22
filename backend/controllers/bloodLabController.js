@@ -3,7 +3,6 @@ import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import QRCode from "qrcode";
 import { generateBloodStorageId } from "../services/barcodeService.js";
-
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const SCREENING_VALUES = ["pending", "negative", "positive"];
 const labFilter = (labId) => ({
