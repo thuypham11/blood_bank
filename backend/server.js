@@ -25,7 +25,7 @@ import bloodLabRoutes from "./routes/bloodLabRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import donationStaffRoutes from './routes/donationStaffRoutes.js';
 import labStaffRoutes from './routes/labStaffRoutes.js';
-
+import staffRoutes from "./routes/staffRoutes.js";
 const app = express();
 const server = http.createServer(app);
 
