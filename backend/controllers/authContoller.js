@@ -3,6 +3,7 @@ import Donor from "../models/donorModel.js";
 import Facility from "../models/facilityModel.js";
 import Admin from "../models/adminModel.js";
 import jwt from "jsonwebtoken";
+import LabStaff from "../models/LabStaff.js";
 
 /**
  * REGISTER (Unified)
@@ -54,10 +55,12 @@ export const login = async (req, res) => {
 			return res.status(400).json({ message: "Email and password are required" });
 
 		// Find user in any model
+		const normalizedEmail = email.trim().toLowerCase();
 		let user =
-			(await Donor.findOne({ email }).select("+password")) ||
-			(await Admin.findOne({ email }).select("+password")) ||
-			(await Facility.findOne({ email }).select("+password"));
+			(await Donor.findOne({ email: normalizedEmail }).select("+password")) ||
+			(await Admin.findOne({ email: normalizedEmail }).select("+password")) ||
+			(await Facility.findOne({ email: normalizedEmail }).select("+password")) ||
+			(await LabStaff.findOne({ email: normalizedEmail }).select("+password"));
 
 		if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -83,9 +86,20 @@ export const login = async (req, res) => {
 			}
 			// The code will now only proceed to create a token and redirect if the status is "approved" (or any other value not 'pending' or 'rejected').
 		}
+		if (user instanceof LabStaff && !user.isActive) {
+			return res.status(403).json({ success: false, message: "Tài khoản nhân viên đã bị khóa" });
+		}
+
+		const authenticatedRole = user instanceof Facility
+			? (user.role || user.facilityType)
+			: user instanceof LabStaff ? "lab_staff" : user.role;
 
 		// ✅ Create token
-		const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
+		const token = jwt.sign({
+			id: user._id,
+			role: authenticatedRole,
+			...(user instanceof LabStaff ? { facilityId: user.facility } : {}),
+		}, process.env.JWT_SECRET, {
 			expiresIn: "7d",
 		});
 
@@ -99,6 +113,8 @@ export const login = async (req, res) => {
 				{ _id: user._id },
 				{ $set: { lastLogin: new Date(), history: updatedHistory } },
 			);
+		} else if (user instanceof LabStaff) {
+			await LabStaff.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
 		} else if (user.role === "admin" || user.role === "superadmin") {
 			await Admin.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
 		} else {
@@ -107,16 +123,17 @@ export const login = async (req, res) => {
 
 		// 🎯 Redirect logic
 		let redirect = "/";
-		if (user.role === "donor") redirect = "/donor";
-		else if (user.role === "hospital") redirect = "/hospital";
-		else if (user.role === "blood-lab") redirect = "/lab";
-		else if (user.role === "admin" || user.role === "superadmin") redirect = "/admin";
+		if (authenticatedRole === "donor") redirect = "/donor";
+		else if (authenticatedRole === "hospital") redirect = "/hospital";
+		else if (authenticatedRole === "blood-lab") redirect = "/lab";
+		else if (authenticatedRole === "lab_staff") redirect = "/lab-staff";
+		else if (authenticatedRole === "admin" || authenticatedRole === "superadmin") redirect = "/admin";
 
 		res.status(200).json({
 			success: true,
 			message: "Login successful",
 			token,
-			user: { id: user._id, email: user.email, role: user.role, status: user.status }, // ✅ status added
+			user: { id: user._id, email: user.email, role: authenticatedRole, status: user.status }, // ✅ status added
 			redirect,
 		});
 	} catch (error) {
@@ -135,14 +152,65 @@ export const getProfile = async (req, res) => {
 			user = await Donor.findById(req.user.id).select("-password");
 		} else if (req.user.role === "admin" || req.user.role === "superadmin") {
 			user = await Admin.findById(req.user.id).select("-password");
+		} else if (req.user.role === "lab_staff") {
+			user = await LabStaff.findById(req.user.id).select("-password");
 		} else {
 			user = await Facility.findById(req.user.id).select("-password");
 		}
 
 		if (!user) return res.status(404).json({ message: "User not found" });
 
+		if (user instanceof Facility && !user.role) {
+			user = user.toObject();
+			user.role = user.facilityType;
+		}
+
 		res.status(200).json({ user });
 	} catch (error) {
 		res.status(500).json({ message: "Error fetching profile", error: error.message });
+	}
+};
+export const createAdmin = async (req, res) => {
+	try {
+		const { name, email, password } = req.body;
+
+		if (!name || !email || !password) {
+			return res.status(400).json({
+				message: "Name, email and password are required",
+			});
+		}
+
+		const existed = await Admin.findOne({ email });
+
+		if (existed) {
+			return res.status(400).json({
+				message: "Admin already exists",
+			});
+		}
+
+		const admin = await Admin.create({
+			name,
+			email,
+			password,
+			role: "admin",
+			isActive: true,
+		});
+
+		res.status(201).json({
+			success: true,
+			message: "Admin created successfully",
+			admin: {
+				id: admin._id,
+				name: admin.name,
+				email: admin.email,
+				role: admin.role,
+			},
+		});
+	} catch (err) {
+		console.error("Create Admin Error:", err);
+		res.status(500).json({
+			message: "Create admin failed",
+			error: err.message,
+		});
 	}
 };

@@ -1,58 +1,60 @@
 import express from "express";
 import {
-  createBloodCamp,
-  deleteBloodCamp,
-  getBloodLabCamps,
+  createBloodUnit,
+  discardBloodUnit,
+  getAllLabs,
   getBloodLabDashboard,
   getBloodLabHistory,
-  updateBloodCamp,        // ADD THIS
-  updateCampStatus,       // ADD THIS
-  addBloodStock,
-  removeBloodStock,
   getBloodStock,
-  updateBloodRequestStatus,
+  getBloodUnitByBarcode,
+  getBloodUnitCodeImage,
+  getBloodUnits,
   getLabBloodRequests,
-  getAllLabs,
-  updateBloodScreening,
+  importBloodUnitToStock,
+  issueBloodUnits,
+  splitBloodUnitComponents,
+  updateBloodHandoverStatus,
+  updateBloodRequestStatus,
+  updateBloodUnitScreening,
 } from "../controllers/bloodLabController.js";
+import {
+  getRecentDonations,
+  markDonation,
+  searchDonor,
+} from "../controllers/donorController.js";
 import { protectFacility } from "../middlewares/facilityMiddleware.js";
-import { getRecentDonations, markDonation, searchDonor } from "../controllers/donorController.js";
+import { createLabStaff, getLabStaff, updateLabStaff } from "../controllers/labStaffController.js";
 
 const router = express.Router();
 
-// Dashboard routes
 router.get("/dashboard", protectFacility, getBloodLabDashboard);
 router.get("/history", protectFacility, getBloodLabHistory);
 
-// Camp management
-router.post("/camps", protectFacility, createBloodCamp);
-router.get("/camps", protectFacility, getBloodLabCamps);
-router.put("/camps/:id", protectFacility, updateBloodCamp);        // ADD THIS
-router.patch("/camps/:id/status", protectFacility, updateCampStatus); // ADD THIS
-router.delete("/camps/:id", protectFacility, deleteBloodCamp);
+router.get("/staff", protectFacility, getLabStaff);
+router.post("/staff", protectFacility, createLabStaff);
+router.patch("/staff/:id", protectFacility, updateLabStaff);
 
-// Blood stock routes
-router.post("/blood/add", protectFacility, addBloodStock);
-router.post("/blood/remove", protectFacility, removeBloodStock);
 router.get("/blood/stock", protectFacility, getBloodStock);
+router.get("/blood/units", protectFacility, getBloodUnits);
+router.post("/blood/units", protectFacility, createBloodUnit);
+router.get("/blood/units/barcode/:barcode", protectFacility, getBloodUnitByBarcode);
+router.get("/blood/units/:id/code", protectFacility, getBloodUnitCodeImage);
+router.post("/blood/units/:id/components", protectFacility, splitBloodUnitComponents);
+router.patch("/blood/units/issue", protectFacility, issueBloodUnits);
+router.patch("/blood/units/:id/screening", protectFacility, updateBloodUnitScreening);
+router.patch("/blood/units/:id/import", protectFacility, importBloodUnitToStock);
+router.patch("/blood/units/:id/discard", protectFacility, discardBloodUnit);
 
-
-// Blood request routes for labs
 router.get("/blood/requests", protectFacility, getLabBloodRequests);
 router.put("/blood/requests/:id", protectFacility, updateBloodRequestStatus);
-// router.patch("/blood/requests/:id/handover", protectFacility, updateBloodHandoverStatus);
+router.patch("/blood/requests/:id/handover", protectFacility, updateBloodHandoverStatus);
 
-// Get labs for hospitals
-router.get("/labs", protectFacility, getAllLabs);
-
-// Add these routes to your bloodLabRoutes.js
+router.get("/donor/search", protectFacility, searchDonor);
+router.post("/donor/donate/:id", protectFacility, markDonation);
 router.get("/donors/search", protectFacility, searchDonor);
 router.post("/donors/donate/:id", protectFacility, markDonation);
 router.get("/donations/recent", protectFacility, getRecentDonations);
-router.patch(
-  "/blood/:id/screening",
-  protectFacility,
-  updateBloodScreening
-);
+
+router.get("/labs", protectFacility, getAllLabs);
 
 export default router;

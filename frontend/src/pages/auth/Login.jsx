@@ -141,6 +141,8 @@ export default function Login() {
 						? "/hospital"
 						: role === "blood-lab"
 							? "/lab"
+							: role === "lab_staff"
+								? "/lab-staff"
 							: role === "admin"
 								? "/admin"
 								: role === "staff"

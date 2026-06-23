@@ -19,6 +19,7 @@ const bloodUnitSchema = new mongoose.Schema({
         testedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
     },
     facility: { type: mongoose.Schema.Types.ObjectId, ref: "Facility" }, // nơi lưu trữ
+    qrCode: { type: String }, 
     expiryDate: Date
 }, { timestamps: true });
 

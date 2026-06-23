@@ -16,6 +16,8 @@ import BloodCamps from "./pages/bloodlab/BloodCamps";
 import BloodlabDashboard from "./pages/bloodlab/BloodlabDashboard";
 import BloodStock from "./pages/bloodlab/BloodStock";
 import LabProfile from "./pages/bloodlab/LabProfile";
+import LabStaffManagement from "./pages/bloodlab/LabStaffManagement";
+import LabStaffWorkspace from "./pages/bloodlab/LabStaffWorkspace";
 import GetAllFacilities from "./pages/admin/GetAllFacilities";
 import GetAllDonors from "./pages/admin/GetAllDonors";
 import AdminProfile from "./pages/admin/AdminProfile";
@@ -41,7 +43,7 @@ import BookDonation from "./pages/donor/BookDonation";
 import MyAppointments from "./pages/donor/MyAppointments";
 import StaffDashboard from './pages/staff/StaffDashboard';
 import StaffQueue from './pages/staff/StaffQueue';
-
+import StaffLogin from './pages/staff/StaffLogin';
 
 function App() {
 	return (
@@ -99,8 +101,9 @@ function App() {
 				}>
 				<Route index element={<BloodlabDashboard />} />
 				<Route path="inventory" element={<BloodStock />} />
-				<Route path="camps" element={<BloodCamps />} />
+				{/* <Route path="camps" element={<BloodCamps />} /> */}
 				<Route path="profile" element={<LabProfile />} />
+				<Route path="staff" element={<LabStaffManagement />} />
 				<Route path="requests" element={<LabManageRequests />} />
 				<Route path="donor" element={<BloodLabDonor />} />
 			</Route>
@@ -127,8 +130,10 @@ function App() {
 				<Route path="settings" element={<AdminSettings />} />
 				<Route path="profile" element={<AdminProfile />} />
 			</Route>
-				<Route path="/staff" element={<StaffDashboard />} />
-<Route path="/staff/queue/:campId" element={<StaffQueue />} />
+			<Route path="/staff/login" element={<StaffLogin />} />
+			<Route path="/lab-staff" element={<ProtectedRoute><LabStaffWorkspace /></ProtectedRoute>} />
+				<Route path="/staff/dashboard" element={<StaffDashboard />} />
+<Route path="/staff/queue/:sessionId" element={<StaffQueue />} />
 			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
 			<Route path="*" element={<LandingPage />} />
 		</Routes>

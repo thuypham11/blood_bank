@@ -4,6 +4,7 @@ import Donor from "../models/donorModel.js";
 import DonationAppointment from "../models/DonationAppointment.js";
 // KHÔNG cần import mongoose nếu không dùng transaction
 import QRCode from 'qrcode';
+import DonationSession from '../models/DonationSession.js';
 import HealthDeclaration from '../models/HealthDeclaration.js';
 // Lấy danh sách camps (dùng cho donor frontend)
 export const getAvailableCamps = async (req, res) => {
@@ -314,34 +315,177 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 export const checkLocationAndDate = async (req, res) => {
+  const io = req.app.get('io'); // Lấy socket.io instance
+  
   try {
     const donorId = req.donor.id;
     const { appointmentId, latitude, longitude } = req.body;
-    const appointment = await DonationAppointment.findById(appointmentId).populate('camp');
-    if (!appointment) return res.status(404).json({ success: false, message: 'Lịch hẹn không tồn tại' });
-    if (appointment.donor.toString() !== donorId) return res.status(403).json({ success: false, message: 'Không phải lịch hẹn của bạn' });
-
+    
+    const appointment = await DonationAppointment.findById(appointmentId)
+      .populate('camp');
+      
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: 'Lịch hẹn không tồn tại' });
+    }
+    
+    if (appointment.donor.toString() !== donorId) {
+      return res.status(403).json({ success: false, message: 'Không phải lịch hẹn của bạn' });
+    }
+    
     // Kiểm tra ngày
     const today = new Date();
     const appointmentDate = new Date(appointment.appointmentDate);
     if (today.toDateString() !== appointmentDate.toDateString()) {
       return res.status(400).json({ success: false, message: 'Hôm nay không phải ngày hiến máu của bạn' });
     }
-
+    
     // Kiểm tra vị trí (bán kính 500m)
     const camp = appointment.camp;
     if (!camp.location?.coordinates) {
       return res.status(500).json({ success: false, message: 'Điểm hiến máu chưa được cấu hình tọa độ' });
     }
+    
     const distance = getDistance(latitude, longitude, camp.location.coordinates.lat, camp.location.coordinates.lng);
-    if (distance > 2000) {
-      return res.status(400).json({ success: false, message: `Bạn chưa đến đúng điểm hiến máu (cách ${Math.round(distance)}m, yêu cầu trong bán kính 500m)` });
+    if (distance > 5000) { // Đã sửa thành 500m
+      return res.status(400).json({ 
+        success: false, 
+        message: `Bạn chưa đến đúng điểm hiến máu (cách ${Math.round(distance)}m, yêu cầu trong bán kính 500m)` 
+      });
     }
-
-    res.json({ success: true, message: 'Đã đến đúng địa điểm, có thể khai báo y tế' });
+    
+    // ✅ TÌM SESSION ĐANG HOẠT ĐỘNG
+    const activeSession = await DonationSession.findOne({
+      camp: camp._id,
+      status: 'active'
+    });
+    
+    if (!activeSession) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Không có phiên hiến máu đang hoạt động. Vui lòng liên hệ staff.' 
+      });
+    }
+    
+    // ✅ KIỂM TRA DONOR ĐÃ TRONG QUEUE CHƯA
+    const existingInQueue = activeSession.queue.find(
+      q => q.donor.toString() === donorId && q.status === 'waiting'
+    );
+    
+    if (existingInQueue) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Bạn đã có trong hàng đợi ở vị trí số ${existingInQueue.position}` 
+      });
+    }
+    
+    // ✅ THÊM VÀO QUEUE
+    const position = activeSession.queue.length + 1;
+    activeSession.queue.push({
+      donor: donorId,
+      appointment: appointmentId,
+      status: 'waiting',
+      position,
+      joinedAt: new Date()
+    });
+    activeSession.totalDonors += 1;
+    await activeSession.save();
+    
+    // ✅ CẬP NHẬT APPOINTMENT STATUS
+    appointment.status = 'checked_in';
+    await appointment.save();
+    
+    // ✅ GỬI THÔNG BÁO REALTIME QUA SOCKET.IO
+    if (io) {
+      io.to(`staff_${activeSession._id}`).emit('queue_updated', { 
+        queue: activeSession.queue,
+        totalDonors: activeSession.totalDonors
+      });
+      
+      io.to(`donor_${donorId}`).emit('queue_position', { 
+        position, 
+        sessionId: activeSession._id,
+        message: `Bạn đã được thêm vào hàng đợi. Vị trí hiện tại: ${position}`
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `Đã xác nhận vị trí! Bạn đang ở vị trí số ${position} trong hàng đợi.`,
+      data: {
+        position,
+        sessionId: activeSession._id,
+        queueLength: activeSession.queue.length
+      }
+    });
+    
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+// Thêm vào donationController.js, sau hàm checkLocationAndDate
+export const donorCheckin = async (req, res) => {
+  try {
+    const donorId = req.donor?._id || req.donor?.id;
+    const { appointmentId } = req.body;
+    
+    if (!appointmentId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Thiếu appointmentId" 
+      });
+    }
+    
+    // Tìm appointment
+    const appointment = await DonationAppointment.findOne({
+      _id: appointmentId,
+      donor: donorId
+    });
+    
+    if (!appointment) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Không tìm thấy lịch hẹn" 
+      });
+    }
+    
+    // Kiểm tra status - chỉ cho phép check-in nếu đã confirmed
+    if (appointment.status !== 'confirmed') {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Không thể check-in vì lịch hẹn đã ${appointment.status}` 
+      });
+    }
+    
+    // Kiểm tra ngày hiến máu
+    const today = new Date();
+    const appointmentDate = new Date(appointment.appointmentDate);
+    if (today.toDateString() !== appointmentDate.toDateString()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Hôm nay không phải ngày hiến máu của bạn" 
+      });
+    }
+    
+    // Cập nhật status
+    appointment.status = 'checked_in';
+    await appointment.save();
+    
+    res.json({ 
+      success: true, 
+      message: "Check-in thành công! Vui lòng khai báo y tế.",
+      data: { 
+        appointmentId: appointment._id, 
+        status: appointment.status 
+      }
+    });
+    
+  } catch (error) {
+    console.error("Check-in error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
   }
 };
 

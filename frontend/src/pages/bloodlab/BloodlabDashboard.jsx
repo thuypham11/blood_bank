@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import axios from "axios"; // gui request tu frontend den backend
 import {
 	Droplet,
 	Calendar,
@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-const API_URL = "http://localhost:5000/api/blood-lab";
+const API_URL = "http://localhost:5000/api/blood-lab"; // day la dia chi backend cua blood lab
 
 const BloodLabDashboard = () => {
 	const [dashboard, setDashboard] = useState(null);
@@ -31,19 +31,19 @@ const BloodLabDashboard = () => {
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 
-	const fetchDashboardData = async () => {
+	const fetchDashboardData = async () => { // lấy dữ liệu từ backend
 		try {
-			const token = localStorage.getItem("token");
+			const token = localStorage.getItem("token"); // lấy token từ localStorage để xác thực
 
 			if (!token) {
 				toast.error("Yêu cầu xác thực");
 				return;
 			}
 
-			const [dashboardRes, stockRes, profileRes] = await Promise.all([
+			const [dashboardRes, stockRes, profileRes] = await Promise.all([ // thực hiện 3 request song song để lấy dữ liệu dashboard, tồn kho máu và thông tin phòng xét nghiệm
 				axios
-					.get(`${API_URL}/dashboard`, {
-						headers: { Authorization: `Bearer ${token}` },
+					.get(`${API_URL}/dashboard`, { 
+						headers: { Authorization: `Bearer ${token}` }, 
 					})
 					.catch((err) => {
 						throw err;
@@ -96,10 +96,9 @@ const BloodLabDashboard = () => {
 			toast.error(message);
 		}
 	};
-
-	const handleRefresh = async () => {
-		setRefreshing(true);
-		await fetchDashboardData();
+	const handleRefresh = async () => { // làm mới dữ liệu trên bảng điều khiển
+		setRefreshing(true); // bật trạng thái làm mới
+		// await fetchDashboardData(); // gọi lại hàm fetchDashboardData để lấy dữ liệu mới nhất từ backend
 		setRefreshing(false);
 		toast.success("Đã cập nhật bảng điều khiển");
 	};
@@ -115,7 +114,7 @@ const BloodLabDashboard = () => {
 
 	if (loading) {
 		return (
-			<div className="min-h-screen bg-gradient-to-br from-red-50 to-white flex items-center justify-center">
+			<div className="min-h-screen bg-linear-to-br from-red-50 to-white flex items-center justify-center">
 				<div className="text-center">
 					<div className="animate-pulse mb-4">
 						<Beaker className="w-12 h-12 text-red-500 mx-auto" />
@@ -133,7 +132,7 @@ const BloodLabDashboard = () => {
 	const loginHistory = lab?.history?.filter((h) => h.eventType === "Login") || [];
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
+		<div className="min-h-screen bg-linear-to-br from-red-50 to-white p-6">
 			{/* Tiêu đề */}
 			<div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
 				<div>
@@ -158,7 +157,7 @@ const BloodLabDashboard = () => {
 			{/* Banner cảnh báo tồn kho nguy cấp */}
 			{criticalStock > 0 && (
 				<div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
-					<AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+					<AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
 					<div>
 						<p className="font-medium text-red-800">Cảnh Báo Tồn Kho Thấp</p>
 						<p className="text-red-600 text-sm">{criticalStock} nhóm máu đang ở mức tồn kho nguy cấp</p>

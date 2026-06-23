@@ -65,7 +65,7 @@ const AdminBloodCamps = () => {
   const [rtConnected, setRtConnected] = useState(false);
   const socketRef = useRef(null);
 
-  const token   = localStorage.getItem("token");
+  const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
   // ── Socket.IO realtime ──────────────────────────────────────────
@@ -233,13 +233,13 @@ const AdminBloodCamps = () => {
 
   const stats = {
     total: camps.length,
-    upcoming: camps.filter(c => c.status === "Upcoming").length,
-    ongoing: camps.filter(c => c.status === "Ongoing").length,
-    completed: camps.filter(c => c.status === "Completed").length,
+    upcoming: camps.filter(c => c.status === "Sắp tới").length,
+    ongoing: camps.filter(c => c.status === "Đang diễn ra").length,
+    completed: camps.filter(c => c.status === "Hoàn thành").length,
   };
 
   if (userData?.role !== "superadmin" && !userData?.permissions?.includes("manage_blood_camps")) {
-    return <div className="flex flex-col items-center justify-center h-96"><AlertTriangle size={64} className="text-red-400 mb-4"/><h2 className="text-2xl font-bold">Không có quyền truy cập</h2></div>;
+    return <div className="flex flex-col items-center justify-center h-96"><AlertTriangle size={64} className="text-red-400 mb-4" /><h2 className="text-2xl font-bold">Không có quyền truy cập</h2></div>;
   }
 
   // Map embed URL (OpenStreetMap iframe — không cần API key)
@@ -265,7 +265,7 @@ const AdminBloodCamps = () => {
           </div>
           <button onClick={fetchCamps} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-600"><RefreshCw size={16}/></button>
           <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold">
-            <Plus size={16}/> Tạo Chiến Dịch
+            <Plus size={16} /> Tạo Chiến Dịch
           </button>
         </div>
       </div>
@@ -279,7 +279,7 @@ const AdminBloodCamps = () => {
           { label: "Hoàn thành",   val: stats.completed, color: "bg-green-500", icon: CheckCircle },
         ].map(({ label, val, color, icon: Icon }) => (
           <div key={label} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <div className={`w-10 h-10 ${color} rounded-lg flex items-center justify-center mb-3`}><Icon size={18} className="text-white"/></div>
+            <div className={`w-10 h-10 ${color} rounded-lg flex items-center justify-center mb-3`}><Icon size={18} className="text-white" /></div>
             <div className="text-2xl font-black text-gray-800">{val}</div>
             <div className="text-xs text-gray-500 font-semibold uppercase mt-1">{label}</div>
           </div>
@@ -287,7 +287,7 @@ const AdminBloodCamps = () => {
       </div>
 
       {successMsg && <div className="p-4 bg-green-50 text-green-700 rounded-xl border border-green-100">{successMsg}</div>}
-      {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 flex justify-between"><span>{error}</span><button onClick={() => setError(null)}><X size={18}/></button></div>}
+      {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 flex justify-between"><span>{error}</span><button onClick={() => setError(null)}><X size={18} /></button></div>}
 
       {/* Filter Tabs */}
       <div className="flex gap-2 flex-wrap">
@@ -301,7 +301,7 @@ const AdminBloodCamps = () => {
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-red-50 overflow-hidden">
-        {isLoading ? <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-red-600" size={32}/></div> : (
+        {isLoading ? <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-red-600" size={32} /></div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
@@ -325,7 +325,7 @@ const AdminBloodCamps = () => {
                     <td className="p-4">
                       <div className="flex items-center gap-1 text-xs text-gray-600 mb-1"><Clock size={11} className="text-blue-400"/>{new Date(camp.date).toLocaleDateString("vi-VN")}{camp.time?.start && ` • ${camp.time.start}${camp.time.end ? ` - ${camp.time.end}` : ""}`}</div>
                       <div className="flex items-start gap-1 text-xs text-gray-500">
-                        <MapPin size={11} className="text-red-400 mt-0.5 shrink-0"/>
+                        <MapPin size={11} className="text-red-400 mt-0.5 shrink-0" />
                         <span className="truncate max-w-[180px]">{camp.location?.venue}, {camp.location?.city}</span>
                       </div>
                     </td>
@@ -338,7 +338,7 @@ const AdminBloodCamps = () => {
                       }`}>{camp.status}</span>
                     </td>
                     <td className="p-4 text-right font-bold text-gray-700 text-sm">
-                      <div className="flex items-center justify-end gap-1"><Users size={13} className="text-gray-400"/>{camp.expectedDonors}</div>
+                      <div className="flex items-center justify-end gap-1"><Users size={13} className="text-gray-400" />{camp.expectedDonors}</div>
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -509,7 +509,7 @@ const AdminBloodCamps = () => {
       {statusModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-2"><Edit3 className="inline mr-2 text-blue-500" size={18}/>Cập Nhật Trạng Thái</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-2"><Edit3 className="inline mr-2 text-blue-500" size={18} />Cập Nhật Trạng Thái</h3>
             <p className="text-sm text-gray-500 mb-5">Chiến dịch: <strong>{statusModal.title}</strong></p>
             <div className="space-y-2">
               {CAMP_STATUSES.map(s => (

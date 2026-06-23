@@ -1,109 +1,131 @@
 import mongoose from "mongoose";
+import { generateBloodStorageId } from "../services/barcodeService.js";
+
+const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+const screeningResultSchema = new mongoose.Schema(
+  {
+    hiv: { type: String, enum: ["pending", "negative", "positive"], default: "pending" },
+    hbv: { type: String, enum: ["pending", "negative", "positive"], default: "pending" },
+    hcv: { type: String, enum: ["pending", "negative", "positive"], default: "pending" },
+    hepatitis: { type: String, enum: ["pending", "negative", "positive"], default: "pending" },
+    syphilis: { type: String, enum: ["pending", "negative", "positive"], default: "pending" },
+  },
+  { _id: false }
+);
 
 const bloodSchema = new mongoose.Schema(
   {
-    barcode: {
+    unitCode: { type: String, unique: true, sparse: true, trim: true },
+    barcode: { type: String, unique: true, sparse: true, trim: true },
+
+    bloodType: { type: String, enum: BLOOD_TYPES },
+    bloodGroup: { type: String, enum: BLOOD_TYPES },
+
+    quantity: { type: Number, required: true, min: 0 },
+
+    collectionDate: { type: Date, default: Date.now },
+    expiryDate: Date,
+    expirationDate: Date,
+
+    bloodLab: { type: mongoose.Schema.Types.ObjectId, ref: "Facility" },
+    hospital: { type: mongoose.Schema.Types.ObjectId, ref: "Facility" },
+
+    componentType: {
       type: String,
-      unique: true,
-      sparse: true,
+      enum: ["whole_blood", "red_cells", "platelets", "plasma"],
+      default: "whole_blood",
     },
-    bloodGroup: {
-      type: String,
-      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-      required: true,
-    },
-    bloodType: {
-      type: String,
-      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-    },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    collectionDate: {
-      type: Date,
-      default: Date.now,
-    },
-    expirationDate: {
-      type: Date,
-    },
-    expiryDate: {
-      type: Date,
-    },
-    bloodLab: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Facility",
-    },
-    hospital: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Facility",
-    },
-    donor: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Donor",
-    },
-  screeningResult: {
-      hiv: {
-        type: String,
-        enum: ["pending", "negative", "positive"],
-        default: "pending",
-      },
-      hbv: {
-        type: String,
-        enum: ["pending", "negative", "positive"],
-        default: "pending",
-      },
-      hcv: {
-        type: String,
-        enum: ["pending", "negative", "positive"],
-        default: "pending",
-      },
-    },
+
+    parentUnit: { type: mongoose.Schema.Types.ObjectId, ref: "Blood", default: null },
+    parentBarcode: { type: String, trim: true, default: null },
+    splitAt: Date,
+
+    screeningResult: { type: screeningResultSchema, default: () => ({}) },
 
     status: {
       type: String,
-      enum: ["pending_testing", "available", "used", "expired", "rejected"],
-      default: "pending_testing",
+      enum: [
+        "pending_screening",
+        "pending-testing",
+        "pending_testing",
+        "qualified",
+        "available",
+        "issued",
+        "used",
+        "expired",
+        "rejected",
+        "discarded",
+        "quarantine",
+        "processed",
+      ],
+      default: "pending_screening",
     },
+
+    issuedTo: { type: String, trim: true },
+    issueReason: { type: String, trim: true },
+    issuedAt: Date,
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
 
-// Pre-save middleware to set expiration date (42 days after collection)
-bloodSchema.pre("save", function (next) {
-  if (!this.bloodType && this.bloodGroup) {
-    this.bloodType = this.bloodGroup;
+bloodSchema.pre("validate", async function () {
+  if (!this.bloodType && this.bloodGroup) this.bloodType = this.bloodGroup;
+  if (!this.bloodGroup && this.bloodType) this.bloodGroup = this.bloodType;
+
+  if (!this.barcode && this.unitCode) this.barcode = this.unitCode;
+  if (!this.unitCode && this.barcode) this.unitCode = this.barcode;
+
+  if (this.isNew && !this.barcode && !this.unitCode) {
+    const facilityId = this.bloodLab || this.hospital;
+
+    if (facilityId) {
+      const identifier = await generateBloodStorageId({ facilityId });
+      this.barcode = identifier;
+      this.unitCode = identifier;
+    }
   }
-  if (!this.bloodGroup && this.bloodType) {
-    this.bloodGroup = this.bloodType;
+
+  if (!this.bloodType) {
+    this.invalidate("bloodType", "Nhóm máu là bắt buộc");
   }
-  if (this.collectionDate && !this.expirationDate && !this.expiryDate) {
+
+  if (
+    this.componentType !== "whole_blood" &&
+    (!this.parentUnit || !this.parentBarcode)
+  ) {
+    this.invalidate("parentUnit", "Chế phẩm phải liên kết với túi máu gốc");
+  }
+
+  if (this.collectionDate && !this.expiryDate && !this.expirationDate) {
     const expiration = new Date(this.collectionDate);
     expiration.setDate(expiration.getDate() + 42);
-    this.expirationDate = expiration;
     this.expiryDate = expiration;
-  } else if (this.expirationDate && !this.expiryDate) {
-    this.expiryDate = this.expirationDate;
+    this.expirationDate = expiration;
   } else if (this.expiryDate && !this.expirationDate) {
     this.expirationDate = this.expiryDate;
+  } else if (this.expirationDate && !this.expiryDate) {
+    this.expiryDate = this.expirationDate;
   }
-  next();
 });
 
-// Virtual for checking if blood is expired
+bloodSchema.index(
+  { parentUnit: 1, componentType: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { parentUnit: { $type: "objectId" } },
+  }
+);
+
 bloodSchema.virtual("isExpired").get(function () {
-  return new Date() > (this.expiryDate || this.expirationDate);
+  const expiry = this.expiryDate || this.expirationDate;
+  return Boolean(expiry && new Date() > expiry);
 });
 
-// Update status if expired
-bloodSchema.post("find", function (docs) {
-  docs.forEach(async (doc) => {
-    if (doc.isExpired && doc.status !== "expired") {
-      doc.status = "expired";
-      await doc.save();
-    }
-  });
-});
+const Blood = mongoose.models.Blood || mongoose.model("Blood", bloodSchema);
 
-export default mongoose.model("Blood", bloodSchema);
+export default Blood;
