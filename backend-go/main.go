@@ -31,7 +31,7 @@ func sendInviteEmail(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received invite request: to=%s, from=%s", req.ToEmail, req.DonorName)
 
 	fromEmail := "phamthithuy2005.giaothuy@gmail.com"
-	password := "igbhdnetgoaclheu" // cập nhật nếu cần
+	password := "ebny otoh cmdm qvky" // cập nhật nếu cần
 	smtpHost := "smtp.gmail.com"
 	smtpPort := "587"
 
@@ -83,7 +83,7 @@ func sendOtpEmail(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Sending OTP to %s for donor %s", req.ToEmail, req.DonorName)
 
 	fromEmail := "phamthithuy2005.giaothuy@gmail.com"
-	password := "igbhdnetgoaclheu"
+	password := "ebny otoh cmdm qvky"
 	smtpHost := "smtp.gmail.com"
 	smtpPort := "587"
 

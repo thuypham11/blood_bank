@@ -117,6 +117,24 @@ export default function Login() {
 			});
 			const data = await res.json();
 
+			if (!res.ok && data.message?.includes("not found")) {
+      const staffRes = await fetch("http://localhost:5000/api/staff/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: formData.identifier, password: formData.password }),
+      });
+      const staffData = await staffRes.json();
+      if (staffRes.ok && staffData.success) {
+        // Lưu token staff
+        localStorage.setItem("token", staffData.token);
+        localStorage.setItem("role", "staff");
+        localStorage.setItem("staffInfo", JSON.stringify(staffData.staff));
+        navigate("/staff", { replace: true });
+        return;
+      } else {
+        throw new Error(staffData.message || "Đăng nhập thất bại");
+      }
+    }
 			if (!res.ok) {
 				if (data.message?.includes("awaiting admin approval"))
 					return setError("Tài khoản đang chờ quản trị viên phê duyệt.");
@@ -141,10 +159,12 @@ export default function Login() {
 						? "/hospital"
 						: role === "blood-lab"
 							? "/lab"
+							: role === "lab_staff"
+								? "/lab-staff"
 							: role === "admin"
 								? "/admin"
 								: role === "donation_staff"
-								? "/staff"
+								? "/donation_staff"
 								: "/");
 			navigate(targetPath, { replace: true });
 		} catch (err) {

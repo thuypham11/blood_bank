@@ -8,7 +8,7 @@ const staffSchema = new mongoose.Schema({
   password: { type: String, required: true, select: false },
   phone: String,
   facility: { type: mongoose.Schema.Types.ObjectId, ref: 'Facility' },
-  role: { type: String, enum: ['staff', 'manager'], default: 'staff' },
+  role: { type: String, enum: ['staff',  'manager'], default: 'staff' },
   isActive: { type: Boolean, default: true },
   lastLogin: Date
 }, { timestamps: true });
