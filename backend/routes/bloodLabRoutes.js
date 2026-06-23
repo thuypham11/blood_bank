@@ -3,6 +3,7 @@ import {
   createBloodUnit,
   discardBloodUnit,
   getAllLabs,
+  getHospitalsForIssue,
   getBloodLabDashboard,
   getBloodLabHistory,
   getBloodStock,
@@ -56,5 +57,6 @@ router.post("/donors/donate/:id", protectFacility, markDonation);
 router.get("/donations/recent", protectFacility, getRecentDonations);
 
 router.get("/labs", protectFacility, getAllLabs);
+router.get("/hospitals", protectFacility, getHospitalsForIssue);
 
 export default router;
