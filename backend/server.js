@@ -15,7 +15,6 @@ import mongoose from "mongoose";
 import cors from "cors";
 import http from "http";
 import { initSocketServer } from "./socket/index.js";
-import staffRoutes from './routes/staffRoutes.js';
 // Import routes
 import authRoutes from "./routes/authRoutes.js";
 import donorRoutes from "./routes/donorRoutes.js";
