@@ -6,7 +6,8 @@ import BloodModel from "../models/BloodModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import AuditLog from "../models/AuditLogModel.js";
 import Notification from "../models/NotificationModel.js";
-
+import DonationSession from "../models/DonationSession.js";   // ← thêm
+import Staff from "../models/Staff.js";         
 /* ==============================================================
    DASHBOARD STATS
    ============================================================== */
@@ -467,9 +468,17 @@ export const getAllCamps = async (req, res) => {
 export const createCamp = async (req, res) => {
   try {
     const { title, date, time, location, hospital, expectedDonors, description } = req.body;
-    if (!title || !date) return res.status(400).json({ success: false, message: "Tiêu đề và ngày là bắt buộc" });
+
+    // Validation cơ bản
+    if (!title || !date) {
+      return res.status(400).json({ success: false, message: "Tiêu đề và ngày là bắt buộc" });
+    }
+
+    // Tạo camp
     const camp = await BloodCamp.create({
-      title, date, time,
+      title,
+      date,
+      time,
       location: {
         venue: location?.venue || title,
         address: location?.address || "",
@@ -483,6 +492,33 @@ export const createCamp = async (req, res) => {
       description: description || "",
       status: "Upcoming",
     });
+
+    // ===== TẠO DONATION SESSION =====
+    // 1. Lấy ID của facility (hospital)
+    const facilityId = camp.hospital; // hoặc hospital từ req.body
+
+    // 2. Tìm nhân viên đầu tiên thuộc facility đó
+    let staff = null;
+    if (facilityId) {
+      staff = await Staff.findOne({ facility: facilityId });
+    }
+
+    // 3. Xác định trạng thái session: nếu ngày diễn ra là hôm nay → active, nếu chưa đến → vẫn active (hoặc có thể set thành scheduled nếu schema hỗ trợ)
+    // Hiện schema chỉ có active/completed/cancelled, nên ta dùng active
+    const sessionStatus = 'active'; // hoặc có thể kiểm tra nếu new Date(date) <= today thì active, còn không thì active cũng được
+
+    // 4. Tạo DonationSession
+    const session = await DonationSession.create({
+      camp: camp._id,
+      staff: staff ? staff._id : null,
+      date: new Date(date), // ngày diễn ra camp
+      status: sessionStatus,
+      queue: [],
+      totalDonors: 0,
+      completedDonors: 0,
+    });
+
+    // Ghi log cho việc tạo camp
     await AuditLog.create({
       action: "CREATE_BLOOD_CAMP",
       performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
@@ -490,9 +526,30 @@ export const createCamp = async (req, res) => {
       description: `Tạo chiến dịch hiến máu: ${title}`,
       ipAddress: req.ip,
     });
-    res.status(201).json({ success: true, message: "Đã tạo chiến dịch hiến máu", camp });
+
+    // Ghi log thêm cho việc tạo session (tùy chọn)
+    await AuditLog.create({
+      action: "CREATE_DONATION_SESSION",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "DonationSession", targetId: session._id },
+      description: `Tạo phiên hiến máu cho camp "${title}" với nhân viên ${staff ? staff.fullName : 'chưa có'}`,
+      ipAddress: req.ip,
+    });
+
+    // Trả về kết quả kèm thông tin session
+    res.status(201).json({
+      success: true,
+      message: "Đã tạo chiến dịch hiến máu và phiên hiến máu tương ứng",
+      camp,
+      session // có thể trả về session nếu frontend cần
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: "Lỗi tạo chiến dịch: " + err.message });
+    console.error("Lỗi tạo camp:", err);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi tạo chiến dịch: " + err.message
+    });
   }
 };
 
