@@ -1,23 +1,14 @@
-import mongoose from "mongoose";
 import Blood from "../models/BloodModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
-import BloodCamp from "../models/bloodCampModel.js";
+import QRCode from "qrcode";
+import { generateBloodStorageId } from "../services/barcodeService.js";
+const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const SCREENING_VALUES = ["pending", "negative", "positive"];
+const labFilter = (labId) => ({
+    $or: [{ hospital: labId }, { bloodLab: labId }],
+});
 
-const generateUnitcode = async () => {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-
-    const prefix = `BU-${yyyy}${mm}${dd}`;
-
-    const countToday = await Blood.countDocuments({
-        unitCode: { $regex: `^${prefix}` },
-    });
-
-    return `${prefix}-${String(countToday + 1).padStart(4, "0")}`;
-};
 const calculatesStatusAfterScreening = (screeningResult) => {
     const values = Object.values(screeningResult);
     if (values.includes("positive")) return "rejected";
@@ -30,14 +21,14 @@ export const getBloodLabDashboard = async (req, res) => {
     try {
         const labId = req.user._id;
         const [units, facility] = await Promise.all([
-            Blood.find({ hospital: labId }),
+            Blood.find(labFilter(labId)),
             Facility.findById(labId).select(
-                "history name email phone addess operatingHours status lastLogin"
+                "history name email phone address operatingHours status lastLogin"
             ),
         ]);
-        const stats = {  // thống kê từng đơn vị trạng thái máu 
+        const stats = {  // thống kê từng đơn vị trạng thái máu
             totalUnits: units.length,
-            pendingScreening: units.filter((u) => u.status === "pending-screening").length,
+            pendingScreening: units.filter((u) => u.status === "pending_screening").length,
             availableUnits: units.filter((u) => u.status === "available").length,
             issuedUnits: units.filter((u) => u.status === "issued").length,
             rejectedUnits: units.filter((u) => u.status === "rejected").length,
@@ -61,7 +52,7 @@ export const getBloodLabDashboard = async (req, res) => {
             });
     }
 };
-// Lịch sử hoạt động 
+// Lịch sử hoạt động
 export const getBloodLabHistory = async (req, res) => {
     try {
         const labId = req.user._id;
@@ -77,7 +68,7 @@ export const getBloodLabHistory = async (req, res) => {
             .filter((item) =>
                 ["Stock Update", "Screening", "Issue", "Login"].includes(item.eventType)
             )
-            .sort((a, b) => new Date(b.date) - new Date(a.date)); // sắp xếp theo ngày 
+            .sort((a, b) => new Date(b.date) - new Date(a.date)); // sắp xếp theo ngày
         res.json({
             success: true,
             activity,
@@ -95,8 +86,8 @@ export const getBloodLabHistory = async (req, res) => {
 export const getBloodUnits = async (req, res) => {
     try {
         const labId = req.user._id;
-        const units = await Blood.find({ hospital: labId }).sort({
-            createAt: -1,
+        const units = await Blood.find(labFilter(labId)).sort({
+            createdAt: -1,
         });
         res.json({
             success: true,
@@ -108,6 +99,205 @@ export const getBloodUnits = async (req, res) => {
             success: false,
             message: "Không thể tải danh sách túi máu",
         });
+    }
+};
+
+export const getBloodStock = async (req, res) => {
+    try {
+        const stock = await Blood.aggregate([
+            { $match: { $and: [labFilter(req.user._id), { status: "available" }] } },
+            {
+                $group: {
+                    _id: "$bloodType",
+                    units: { $sum: 1 },
+                    quantity: { $sum: "$quantity" },
+                },
+            },
+            { $project: { _id: 0, bloodType: "$_id", units: 1, quantity: 1 } },
+            { $sort: { bloodType: 1 } },
+        ]);
+        res.json({ success: true, data: stock });
+    } catch (error) {
+        console.error("Get Blood Stock Error:", error);
+        res.status(500).json({ success: false, message: "Không thể tải tồn kho máu" });
+    }
+};
+
+export const getBloodUnitByBarcode = async (req, res) => {
+    try {
+        const barcode = String(req.params.barcode || "").trim().toUpperCase();
+        if (!barcode) {
+            return res.status(400).json({ success: false, message: "Barcode không hợp lệ" });
+        }
+
+        const unit = await Blood.findOne({
+            $and: [
+                labFilter(req.user._id),
+                { $or: [{ barcode }, { unitCode: barcode }] },
+            ],
+        }).populate("parentUnit", "barcode unitCode componentType");
+
+        if (!unit) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy đơn vị máu" });
+        }
+
+        res.json({ success: true, data: unit });
+    } catch (error) {
+        console.error("Lookup Barcode Error:", error);
+        res.status(500).json({ success: false, message: "Không thể tra cứu barcode" });
+    }
+};
+
+export const getBloodUnitCodeImage = async (req, res) => {
+    try {
+        const unit = await Blood.findOne({
+            _id: req.params.id,
+            ...labFilter(req.user._id),
+        }).select("barcode unitCode");
+
+        if (!unit) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy đơn vị máu" });
+        }
+
+        const identifier = unit.barcode || unit.unitCode;
+        if (!identifier) {
+            return res.status(409).json({ success: false, message: "Đơn vị máu chưa có barcode" });
+        }
+
+        const dataUrl = await QRCode.toDataURL(identifier, {
+            errorCorrectionLevel: "H",
+            margin: 2,
+            width: 320,
+            type: "image/png",
+        });
+
+        res.json({
+            success: true,
+            data: { identifier, format: "QR", errorCorrectionLevel: "H", dataUrl },
+        });
+    } catch (error) {
+        console.error("Generate QR Error:", error);
+        res.status(500).json({ success: false, message: "Không thể tạo mã QR" });
+    }
+};
+
+export const splitBloodUnitComponents = async (req, res) => {
+    const labId = req.user._id;
+    const allowedTypes = new Set(["red_cells", "platelets", "plasma"]);
+    const components = Array.isArray(req.body?.components) ? req.body.components : [];
+    const normalizedComponents = components.map((component) => ({
+        type: component?.type,
+        quantity: Number(component?.quantity),
+        expiryDate: component?.expiryDate ? new Date(component.expiryDate) : null,
+    }));
+    const uniqueTypes = new Set(normalizedComponents.map((component) => component.type));
+
+    if (
+        normalizedComponents.length === 0 ||
+        uniqueTypes.size !== normalizedComponents.length ||
+        normalizedComponents.some(
+            (component) =>
+                !allowedTypes.has(component.type) ||
+                !Number.isFinite(component.quantity) ||
+                component.quantity <= 0 ||
+                !component.expiryDate ||
+                Number.isNaN(component.expiryDate.getTime())
+        )
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: "Mỗi chế phẩm cần loại, dung tích và hạn sử dụng hợp lệ",
+        });
+    }
+
+    const splitAt = new Date();
+    const createdIds = [];
+    let source;
+    let previousStatus;
+
+    try {
+        source = await Blood.findOneAndUpdate(
+            {
+                _id: req.params.id,
+                ...labFilter(labId),
+                componentType: { $in: ["whole_blood", null] },
+                status: { $in: ["qualified", "available"] },
+                splitAt: null,
+            },
+            { $set: { splitAt, status: "processed" } },
+            { new: false }
+        );
+
+        if (!source) {
+            return res.status(409).json({
+                success: false,
+                message: "Túi máu không phù hợp để tách hoặc đã được tách trước đó",
+            });
+        }
+
+        previousStatus = source.status;
+        let parentBarcode = source.barcode || source.unitCode;
+        if (!parentBarcode) {
+            parentBarcode = await generateBloodStorageId({ facilityId: labId });
+            await Blood.updateOne(
+                { _id: source._id, splitAt },
+                { $set: { barcode: parentBarcode, unitCode: parentBarcode } }
+            );
+        }
+
+        const createdComponents = [];
+        for (const component of normalizedComponents) {
+            const identifier = await generateBloodStorageId({ facilityId: labId });
+            const created = await Blood.create({
+                unitCode: identifier,
+                barcode: identifier,
+                bloodType: source.bloodType || source.bloodGroup,
+                bloodGroup: source.bloodGroup || source.bloodType,
+                quantity: component.quantity,
+                collectionDate: source.collectionDate,
+                expiryDate: component.expiryDate,
+                expirationDate: component.expiryDate,
+                bloodLab: source.bloodLab || labId,
+                hospital: source.hospital || labId,
+                componentType: component.type,
+                parentUnit: source._id,
+                parentBarcode,
+                screeningResult: source.screeningResult,
+                status: previousStatus,
+            });
+            createdIds.push(created._id);
+            createdComponents.push(created);
+        }
+
+        await Facility.findByIdAndUpdate(labId, {
+            $push: {
+                history: {
+                    eventType: "Stock Update",
+                    description: `Split blood unit ${parentBarcode} into ${createdComponents.length} components`,
+                    date: new Date(),
+                    referenceId: source._id,
+                },
+            },
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Tách chế phẩm và cấp barcode thành công",
+            data: { parentId: parentBarcode, components: createdComponents },
+        });
+    } catch (error) {
+        if (createdIds.length > 0) {
+            await Blood.deleteMany({ _id: { $in: createdIds }, parentUnit: source?._id });
+        }
+        if (source?._id && previousStatus) {
+            await Blood.updateOne(
+                { _id: source._id, splitAt },
+                { $set: { status: previousStatus }, $unset: { splitAt: 1 } }
+            );
+        }
+
+        console.error("Split Blood Components Error:", error);
+        res.status(500).json({ success: false, message: "Không thể tách chế phẩm máu" });
     }
 };
 
@@ -125,7 +315,7 @@ export const createBloodUnit = async (req, res) => {
             });
         }
 
-        if (!bloodType || !quantity || !collectionDate) {
+        if (!BLOOD_TYPES.includes(bloodType) || !quantity || !collectionDate) {
             return res.status(400).json({
                 success: false,
                 message: "Vui lòng nhập nhóm máu , dung tích và ngày lấy máu",
@@ -137,15 +327,18 @@ export const createBloodUnit = async (req, res) => {
                 message: "Dung tích máu phải lớn hơn 0",
             });
         }
-        const unitCode = await generateUnitcode();
+        const unitCode = await generateBloodStorageId({ facilityId: labId });
 
         const unit = await Blood.create({
             unitCode,
+            barcode: unitCode,
             bloodType,
             quantity: Number(quantity),
             collectionDate,
             expiryDate,
             hospital: labId,
+            bloodLab: labId,
+            componentType: "whole_blood",
             status: "pending_screening",
             screeningResult: {
                 hiv: "pending",
@@ -187,7 +380,7 @@ export const updateBloodUnitScreening = async (req, res) => {
 
         const blood = await Blood.findOne({
             _id: id,
-            hospital: labId,
+            ...labFilter(labId),
         });
         if (!blood) {
             return res.status(404).json({
@@ -202,6 +395,12 @@ export const updateBloodUnitScreening = async (req, res) => {
             hepatitis,
             syphilis,
         };
+        if (Object.values(screeningResult).some((value) => !SCREENING_VALUES.includes(value))) {
+            return res.status(400).json({
+                success: false,
+                message: "Kết quả sàng lọc không hợp lệ",
+            });
+        }
         blood.screeningResult = screeningResult;
         blood.status = calculatesStatusAfterScreening(screeningResult);
 
@@ -237,7 +436,7 @@ export const importBloodUnitToStock = async (req, res) => {
 
         const blood = await Blood.findOne({
             _id: id,
-            hospital: labId,
+            ...labFilter(labId),
         });
         if (!blood) {
             return res.status(404).json({
@@ -285,7 +484,7 @@ export const discardBloodUnit = async (req, res) => {
         const blood = await Blood.findOneAndUpdate(
             {
                 _id: id,
-                hospital: labId,
+                ...labFilter(labId),
             },
             {
                 status: "discarded",
@@ -321,7 +520,7 @@ export const discardBloodUnit = async (req, res) => {
         });
     }
 };
-// Xuất đơn vị máu 
+// Xuất đơn vị máu
 export const issueBloodUnits = async (req, res) => {
     try {
         const labId = req.user._id;
@@ -342,7 +541,7 @@ export const issueBloodUnits = async (req, res) => {
             });
         }
         const availableUnits = await Blood.find({
-            hospital: labId,
+            ...labFilter(labId),
             bloodType,
             status: "available",
         }).sort({ expiryDate: 1 });
@@ -356,7 +555,7 @@ export const issueBloodUnits = async (req, res) => {
         if (totalVolume < volumeNeed) {
             return res.status(400).json({
                 success: false,
-                message: "Không đủ máu trong kho . Hiện có ${totalVolume}ml .cần ${VolumeNeed}ml ",
+                message: `Không đủ máu trong kho. Hiện có ${totalVolume}ml, cần ${volumeNeed}ml`,
                 data: {
                     selectedUnits,
                     totalVolume,
@@ -369,7 +568,7 @@ export const issueBloodUnits = async (req, res) => {
         await Blood.updateMany(
             {
                 _id: { $in: selectedIds },
-                hospital: labId,
+                ...labFilter(labId),
             },
             {
                 status: "issued",
@@ -380,7 +579,7 @@ export const issueBloodUnits = async (req, res) => {
         );
         const issuedUnits = await Blood.find({
             _id: { $in: selectedIds },
-            hospital: labId,
+            ...labFilter(labId),
         });
         await Facility.findByIdAndUpdate(labId, {
             $push: {
@@ -409,28 +608,34 @@ export const issueBloodUnits = async (req, res) => {
         });
     }
 };
-// Yêu cầu xét nghiệm máu 
+// Yêu cầu xét nghiệm máu
 export const getLabBloodRequests = async (req, res) => {
     try {
         const labId = req.user._id;
 
-        const requests = await BloodRequest.find({ labId })
-            .populate("hospitalId", "name email phone address")
-            .sort({ createAt: -1 });
+        const requests = await BloodRequest.find({
+            labId,
+        })
+            .populate(
+                "hospitalId",
+                "name email phone address"
+            )
+            .sort({ createdAt: -1 });
 
         res.json({
             success: true,
-            request,
+            requests,
         });
     } catch (error) {
-        console.error("Get Lab Requests Error :", error);
+        console.error(error);
+
         res.status(500).json({
             success: false,
-            message: "Failed to fetch blood requests",
+            message: "Failed to fetch requests",
         });
     }
 };
-// Cập nhật trạng thái yêu cầu 
+// Cập nhật trạng thái yêu cầu
 export const updateBloodRequestStatus = async (req, res) => {
     try {
         const { id } = req.params;
@@ -460,7 +665,7 @@ export const updateBloodRequestStatus = async (req, res) => {
             });
         }
         request.status = action === "accept" ? "accepted" : "rejected";
-        request, processedAt = new Date();
+        request.processedAt = new Date();
 
         await request.save();
         await Facility.findByIdAndUpdate(labId, {
@@ -486,6 +691,40 @@ export const updateBloodRequestStatus = async (req, res) => {
         });
     }
 };
+
+export const updateBloodHandoverStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { handoverStatus } = req.body;
+        const labId = req.user._id;
+        const allowedStatuses = ["received", "preparing", "packed", "shipping"];
+
+        if (!allowedStatuses.includes(handoverStatus)) {
+            return res.status(400).json({ success: false, message: "Trạng thái bàn giao không hợp lệ" });
+        }
+
+        const request = await BloodRequest.findOne({ _id: id, labId });
+        if (!request) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu" });
+        }
+        if (request.status !== "accepted") {
+            return res.status(400).json({ success: false, message: "Yêu cầu chưa được chấp nhận" });
+        }
+
+        request.handoverStatus = handoverStatus;
+        request.handoverTimeline.push({
+            status: handoverStatus,
+            label: `Blood lab updated handover to ${handoverStatus}`,
+            actor: labId,
+        });
+        await request.save();
+
+        res.json({ success: true, message: "Đã cập nhật trạng thái bàn giao", data: request });
+    } catch (error) {
+        console.error("Update Handover Error:", error);
+        res.status(500).json({ success: false, message: "Không thể cập nhật trạng thái bàn giao" });
+    }
+};
 console.log("bloodLabcontroller active");
 
 export const getAllLabs = async (req, res) => {
@@ -493,7 +732,7 @@ export const getAllLabs = async (req, res) => {
         const labs = await Facility.find({
             facilityType: "blood-lab",
             status: "approved",
-        }).selected("name email phone address operatingHours");
+        }).select("name email phone address operatingHours");
         res.json({
             success: true,
             labs,

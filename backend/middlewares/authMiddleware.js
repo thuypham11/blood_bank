@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import Donor from "../models/donorModel.js";
 import Admin from "../models/adminModel.js";
 import Facility from "../models/facilityModel.js";
+import LabStaff from "../models/LabStaff.js";
 
 export const protect = async (req, res, next) => {
   let token;
@@ -18,7 +19,8 @@ export const protect = async (req, res, next) => {
       let user =
         (await Donor.findById(decoded.id).select("-password")) ||
         (await Admin.findById(decoded.id).select("-password")) ||
-        (await Facility.findById(decoded.id).select("-password"));
+        (await Facility.findById(decoded.id).select("-password")) ||
+        (await LabStaff.findById(decoded.id).select("-password"));
 
       if (!user)
         return res.status(401).json({ message: "User not found or unauthorized" });

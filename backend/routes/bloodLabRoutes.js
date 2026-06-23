@@ -1,70 +1,60 @@
 import express from "express";
 import {
+  createBloodUnit,
+  discardBloodUnit,
+  getAllLabs,
   getBloodLabDashboard,
   getBloodLabHistory,
-
+  getBloodStock,
+  getBloodUnitByBarcode,
+  getBloodUnitCodeImage,
   getBloodUnits,
-  createBloodUnit,
-  updateBloodUnitScreening,
-  importBloodUnitToStock,
-  discardBloodUnit,
-  issueBloodUnits,
-
   getLabBloodRequests,
+  importBloodUnitToStock,
+  issueBloodUnits,
+  splitBloodUnitComponents,
+  updateBloodHandoverStatus,
   updateBloodRequestStatus,
-  getAllLabs,
+  updateBloodUnitScreening,
 } from "../controllers/bloodLabController.js";
-
-import { protectFacility } from "../middlewares/facilityMiddleware.js";
 import {
   getRecentDonations,
   markDonation,
   searchDonor,
 } from "../controllers/donorController.js";
+import { protectFacility } from "../middlewares/facilityMiddleware.js";
+import { createLabStaff, getLabStaff, updateLabStaff } from "../controllers/labStaffController.js";
 
 const router = express.Router();
 
-// DASHBOARD & HISTORY 
 router.get("/dashboard", protectFacility, getBloodLabDashboard);
 router.get("/history", protectFacility, getBloodLabHistory);
 
-// BLOOD UNITS
+router.get("/staff", protectFacility, getLabStaff);
+router.post("/staff", protectFacility, createLabStaff);
+router.patch("/staff/:id", protectFacility, updateLabStaff);
+
+router.get("/blood/stock", protectFacility, getBloodStock);
 router.get("/blood/units", protectFacility, getBloodUnits);
 router.post("/blood/units", protectFacility, createBloodUnit);
-
-//router này phải được đặt trước các router có :id
+router.get("/blood/units/barcode/:barcode", protectFacility, getBloodUnitByBarcode);
+router.get("/blood/units/:id/code", protectFacility, getBloodUnitCodeImage);
+router.post("/blood/units/:id/components", protectFacility, splitBloodUnitComponents);
 router.patch("/blood/units/issue", protectFacility, issueBloodUnits);
+router.patch("/blood/units/:id/screening", protectFacility, updateBloodUnitScreening);
+router.patch("/blood/units/:id/import", protectFacility, importBloodUnitToStock);
+router.patch("/blood/units/:id/discard", protectFacility, discardBloodUnit);
 
-router.patch(
-  "/blood/units/:id/screening",
-  protectFacility,
-  updateBloodUnitScreening
-);
-
-router.patch(
-  "/blood/units/:id/import",
-  protectFacility,
-  importBloodUnitToStock
-);
-
-router.patch(
-  "/blood/units/:id/discard",
-  protectFacility,
-  discardBloodUnit
-);
-
-// BLOOD REQUESTS
 router.get("/blood/requests", protectFacility, getLabBloodRequests);
 router.put("/blood/requests/:id", protectFacility, updateBloodRequestStatus);
-router.patch("/blood/requests/:id/handover", protectFacility);
+router.patch("/blood/requests/:id/handover", protectFacility, updateBloodHandoverStatus);
 
-// DONOR SUPPORT
 router.get("/donor/search", protectFacility, searchDonor);
 router.post("/donor/donate/:id", protectFacility, markDonation);
+router.get("/donors/search", protectFacility, searchDonor);
+router.post("/donors/donate/:id", protectFacility, markDonation);
 router.get("/donations/recent", protectFacility, getRecentDonations);
 
-// LABS
 router.get("/labs", protectFacility, getAllLabs);
 
-console.log("NEW BLOOD LAB ROUTES ACTIVE");
 export default router;

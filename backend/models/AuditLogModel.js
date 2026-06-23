@@ -10,7 +10,7 @@ const auditLogSchema = new mongoose.Schema(
     performedBy: {
       userType: {
         type: String,
-        enum: ["Admin", "Facility", "Donor", "System"],
+        enum: ["Admin", "Facility", "Donor", "LabStaff", "System"],
         required: true,
       },
       userId: {
