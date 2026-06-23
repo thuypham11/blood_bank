@@ -176,6 +176,7 @@ const getStatusBadge = (status) => {
 };
 
 const BloodStock = () => {
+  const [expiringUnits, setExpiringUnits] = useState([]);
   const [bloodUnits, setBloodUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -273,6 +274,19 @@ const BloodStock = () => {
   const isIssueEnough =
     selectedIssueUnits.length > 0 && totalSelectedVolume >= requestedVolume;
 
+
+
+  const fetchExpiringUnits = async () => {
+    try {
+      const token = getToken();
+      const { data } = await axios.get(`${API_URL}/blood/check-expiry?threshold=3`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (data.success) setExpiringUnits(data.expiringUnits || []);
+    } catch (err) {
+      console.error("Check Blood Expiry Error:", err);
+    }
+  };
   const fetchBloodUnits = async () => {
     try {
       setLoading(true);
@@ -308,6 +322,7 @@ const BloodStock = () => {
 
   useEffect(() => {
     fetchBloodUnits();
+    fetchExpiringUnits();
   }, []);
 
   const validateReceiveForm = () => {
@@ -1175,6 +1190,20 @@ const BloodStock = () => {
           </div>
         ) : (
           <>
+            {expiringUnits.length > 0 && (
+              <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-4 text-orange-700">
+                <p>
+                  Có <strong>{expiringUnits.length}</strong> túi máu sắp hết hạn, vui lòng ưu tiên sử dụng.
+                </p>
+                <ul className="mt-2 list-disc list-inside text-sm">
+                  {expiringUnits.map((unit) => (
+                    <li key={unit._id}>
+                      {unit.unitCode || unit.barcode} - Nhóm {unit.bloodType} - Hạn sử dụng: {formatDate(unit.expiryDate)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1150px]">
                 <thead>

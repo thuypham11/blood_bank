@@ -25,6 +25,7 @@ import {
   searchDonor,
 } from "../controllers/donorController.js";
 import { protectFacility } from "../middlewares/facilityMiddleware.js";
+import { checkBloodExpiry } from "../controllers/bloodLabController.js";
 
 
 const router = express.Router();
@@ -33,6 +34,10 @@ router.get("/dashboard", protectFacility, getBloodLabDashboard);
 router.get("/history", protectFacility, getBloodLabHistory);
 
 
+router.get("/blood/check-expiry", (req, res) => {
+  console.log("check-expiry route called");
+  res.json({ success: true, expiringUnits: [] });
+});
 
 router.get("/blood/stock", protectFacility, getBloodStock);
 router.get("/blood/units", protectFacility, getBloodUnits);

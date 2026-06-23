@@ -380,6 +380,43 @@ export const createBloodUnit = async (req, res) => {
         });
     }
 };
+export const checkBloodExpiry = async (req, res) => {
+    try {
+        const labId = req.user._id;
+        const thresholdDays = Number(req.query.threshold) || 3;
+        const today = new Date();
+
+        const availableUnits = await Blood.find({
+            bloodLab: labId,
+            status: "available",
+            expiryDate: { $gte: today }
+        }).lean();
+
+        const expiringUnits = availableUnits
+            .filter(unit => {
+                const expiry = new Date(unit.expiryDate);
+                const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+                return diffDays <= thresholdDays;
+            })
+            .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+
+        await Facility.findByIdAndUpdate(labId, {
+            $push: {
+                history: {
+                    eventType: "Expiry Alert",
+                    description: `Checked blood expiry: ${expiringUnits.length} units near expiry`,
+                    date: new Date(),
+                    referenceIds: expiringUnits.map(u => u._id)
+                }
+            }
+        });
+
+        res.json({ success: true, expiringUnits });
+    } catch (error) {
+        console.error("Check Blood Expiry Error:", error);
+        res.status(500).json({ success: false, message: "Không thể kiểm tra hạn sử dụng" });
+    }
+};
 
 export const updateBloodUnitScreening = async (req, res) => {
     try {
