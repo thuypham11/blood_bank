@@ -45,68 +45,91 @@ import StaffLogin from './pages/staff/StaffLogin';
 
 function App() {
 	return (
-		 <Routes>
-      {/* Public Routes */}
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/register/donor" element={<DonorRegister />} />
-      <Route path="/register/facility" element={<FacilityForm />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/about" element={<About />} />
-      <Route path="/contact" element={<Contact />} />
+		<Routes>
+			
+			{/* Public Routes */}
+			<Route path="/" element={<LandingPage />} />
+			<Route path="/register" element={<Register />} />
+			<Route path="/register/donor" element={<DonorRegister />} />
+			<Route path="/register/facility" element={<FacilityForm />} />
+			<Route path="/login" element={<Login />} />
+			<Route path="/about" element={<About />} />
+			<Route path="/contact" element={<Contact />} />
+			<Route path="/staff/login" element={<StaffLogin />} />
+			{/* Donor Routes */}
+			<Route
+				path="/donor"
+				element={
+					<ProtectedRoute>
+						<DashboardLayout userRole="donor" />
+					</ProtectedRoute>
+				}>
+				<Route index element={<DonorDashboard />} />
+				<Route path="profile" element={<DonorProfile />} />
+				<Route path="camps" element={<DonorCampsList />} />
+				<Route path="history" element={<DonorDonationHistory />} />
+				<Route path="test-results" element={<DonorTestResults />} />
+				<Route path="book" element={<BookDonation />} />
+				<Route path="my-appointments" element={<MyAppointments />} />
+				
+			</Route>
 
-      {/* Staff Login (public) */}
-      <Route path="/staff/login" element={<StaffLogin />} />
+			{/* Hospital Routes */}
+			<Route
+				path="/hospital"
+				element={
+					<ProtectedRoute>
+						<DashboardLayout userRole="hospital" />
+					</ProtectedRoute>
+				}>
+				<Route index element={<HospitalDashboard />} />
+				<Route path="blood-request-create" element={<HospitalRequestBlood />} />
+				<Route path="blood-request-history" element={<HospitalRequestHistory />} />
+				<Route path="inventory" element={<HospitalBloodStock />} />
+				<Route path="donors" element={<DonorDirectory />} />
+			</Route>
 
-      {/* Donor Routes */}
-      <Route
-        path="/donor"
-        element={
-          <ProtectedRoute allowedRoles={['donor']}>
-            <DashboardLayout userRole="donor" />
-          </ProtectedRoute>
-        }
-      >
-        {/* ... các route donor */}
-      </Route>
+			{/* Blood Lab Routes */}
+			<Route
+				path="/lab"
+				element={
+					<ProtectedRoute>
+						<DashboardLayout userRole="blood-lab" />
+					</ProtectedRoute>
+				}>
+				<Route index element={<BloodlabDashboard />} />
+				<Route path="inventory" element={<BloodStock />} />
+				{/* <Route path="camps" element={<BloodCamps />} /> */}
+				<Route path="profile" element={<LabProfile />} />
+			<Route path="lab" element={<LabStaffManagement />} /> 
+				{/* <Route path="requests" element={<LabManageRequests />} /> */}
+				<Route path="donor" element={<BloodLabDonor />} />
+			</Route>
 
-      {/* Hospital Routes */}
-      <Route
-        path="/hospital"
-        element={
-          <ProtectedRoute allowedRoles={['hospital']}>
-            <DashboardLayout userRole="hospital" />
-          </ProtectedRoute>
-        }
-      >
-        {/* ... các route hospital */}
-      </Route>
-
-      {/* Blood Lab Routes */}
-      <Route
-        path="/lab"
-        element={
-          <ProtectedRoute allowedRoles={['blood-lab']}>
-            <DashboardLayout userRole="blood-lab" />
-          </ProtectedRoute>
-        }
-      >
-        {/* ... các route lab */}
-      </Route>
-
-      {/* Admin Routes */}
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute allowedRoles={['admin']}>
-            <DashboardLayout userRole="admin" />
-          </ProtectedRoute>
-        }
-      >
-        {/* ... các route admin */}
-      </Route>
-
-      {/* Staff Routes */}
+			{/* Admin Routes */}
+			<Route
+				path="/admin"
+				element={
+					<ProtectedRoute>
+						<DashboardLayout userRole="admin" />
+					</ProtectedRoute>
+				}>
+					
+				<Route index element={<AdminDashboard />} />
+				<Route path="verification" element={<AdminFacilities />} />
+				<Route path="donors" element={<GetAllDonors />} />
+				<Route path="facilities" element={<GetAllFacilities />} />
+				<Route path="users" element={<AdminUsers />} />
+				<Route path="blood-requests" element={<AdminBloodRequests />} />
+				<Route path="blood-stock" element={<AdminBloodStock />} />
+				<Route path="camps" element={<AdminBloodCamps />} />
+				<Route path="audit-logs" element={<AdminAuditLogs />} />
+				<Route path="reports" element={<AdminReports />} />
+				<Route path="notifications" element={<AdminNotifications />} />
+				<Route path="settings" element={<AdminSettings />} />
+				<Route path="profile" element={<AdminProfile />} />
+			</Route>
+			{/* Staff Routes */}
       <Route
         path="/staff"
         element={
@@ -123,10 +146,9 @@ function App() {
           </ProtectedRoute>
         }
       />
-
-      {/* Fallback */}
-      <Route path="*" element={<LandingPage />} />
-    </Routes>
+			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
+			<Route path="*" element={<LandingPage />} />
+		</Routes>
 
 		
 	);
