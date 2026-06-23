@@ -190,9 +190,15 @@ const BloodStock = () => {
   const [issueForm, setIssueForm] = useState(emptyIssueForm);
   const [selectedIssueUnits, setSelectedIssueUnits] = useState([]);
   const [customIssueVolume, setCustomIssueVolume] = useState(false);
-  const [issueItems, setIssueItems] = useState([
-    { bloodType: "", requestedVolume: "", componentType: "" },
-  ]);
+  const [issueDraft, setIssueDraft] = useState({
+    bloodType: "",
+    requestedVolume: "",
+    componentType: "whole_blood",
+  });
+
+  const [issueCart, setIssueCart] = useState([]);
+  const [issuePreview, setIssuePreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [screeningForm, setScreeningForm] = useState(null);
@@ -442,31 +448,154 @@ const BloodStock = () => {
     // Auto-select is now handled on server when issuing multiple items.
     alert('Tự động chọn đã được dời sang server khi xuất nhiều mục. Vui lòng dùng nút Xác nhận xuất kho.');
   };
+  const handleAddToIssueCart = () => {
+    if (!issueDraft.componentType) {
+      alert("Vui lòng chọn chế phẩm máu");
+      return;
+    }
 
+    if (!issueDraft.bloodType) {
+      alert("Vui lòng chọn nhóm máu");
+      return;
+    }
+
+    if (!issueDraft.requestedVolume || Number(issueDraft.requestedVolume) <= 0) {
+      alert("Vui lòng nhập số ml cần xuất");
+      return;
+    }
+
+    const newItem = {
+      componentType: issueDraft.componentType,
+      bloodType: issueDraft.bloodType,
+      requestedVolume: Number(issueDraft.requestedVolume),
+    };
+
+    setIssueCart((current) => {
+      const existedIndex = current.findIndex(
+        (item) =>
+          item.componentType === newItem.componentType &&
+          item.bloodType === newItem.bloodType
+      );
+
+      if (existedIndex >= 0) {
+        return current.map((item, index) =>
+          index === existedIndex
+            ? {
+              ...item,
+              requestedVolume:
+                Number(item.requestedVolume) + Number(newItem.requestedVolume),
+            }
+            : item
+        );
+      }
+
+      return [...current, newItem];
+    });
+
+    setIssueDraft({
+      bloodType: "",
+      requestedVolume: "",
+      componentType: "whole_blood",
+    });
+
+    setIssuePreview(null);
+  };
+  const handleRemoveFromIssueCart = (index) => {
+    setIssueCart((current) => current.filter((_, i) => i !== index));
+    setIssuePreview(null);
+  };
+  const handlePreviewIssueCart = async () => {
+    if (!issueForm.hospitalName) {
+      alert("Vui lòng chọn bệnh viện nhận máu");
+      return;
+    }
+
+    if (issueCart.length === 0) {
+      alert("Vui lòng thêm ít nhất một dòng vào giỏ xuất");
+      return;
+    }
+
+    try {
+      setPreviewLoading(true);
+
+      const token = getToken();
+
+      const { data } = await axios.post(
+        `${API_URL}/blood/units/issue/preview`,
+        {
+          hospitalName: issueForm.hospitalName,
+          reason: issueForm.reason || "Cấp máu theo yêu cầu",
+          items: issueCart,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setIssuePreview(data.data);
+    } catch (error) {
+      console.error("Preview Issue Error:", error.response?.data || error);
+      alert(error.response?.data?.message || "Không thể kiểm tra tồn kho");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
   const handleIssueBlood = async (e) => {
     e.preventDefault();
-    // Build payload: prefer issueItems (multiple rows), fallback to single issueForm
-    const payload = issueItems && issueItems.length > 0 ? { items: issueItems, hospitalName: issueForm.hospitalName, reason: issueForm.reason } : { ...issueForm };
+
+    if (!issueForm.hospitalName) {
+      alert("Vui lòng chọn bệnh viện nhận máu");
+      return;
+    }
+
+    if (issueCart.length === 0) {
+      alert("Vui lòng thêm ít nhất một dòng vào giỏ xuất");
+      return;
+    }
+
+    if (!issuePreview?.canIssue) {
+      alert("Vui lòng kiểm tra tồn kho và đảm bảo đủ máu trước khi xuất");
+      return;
+    }
+
+    const payload = {
+      hospitalName: issueForm.hospitalName,
+      reason: issueForm.reason || "Cấp máu theo yêu cầu",
+      items: issueCart,
+    };
+
     try {
       const token = getToken();
+
       const { data } = await axios.patch(`${API_URL}/blood/units/issue`, payload, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
-      alert(data.message || 'Xuất máu thành công');
-      // reset
+      alert(data.message || "Xuất máu thành công");
+
       setIssueForm(emptyIssueForm);
-      setIssueItems([{ bloodType: "", requestedVolume: "", componentType: "" }]);
-      setSelectedIssueUnits([]);
-      setCustomIssueVolume(false);
+      setIssueDraft({
+        bloodType: "",
+        requestedVolume: "",
+        componentType: "whole_blood",
+      });
+      setIssueCart([]);
+      setIssuePreview(null);
 
       await fetchBloodUnits();
     } catch (error) {
-      console.error('Issue Blood Units Error:', error.response?.data || error);
-      alert(error.response?.data?.message || 'Không thể xuất máu');
+      console.error("Issue Blood Units Error:", error.response?.data || error);
+      alert(error.response?.data?.message || "Không thể xuất máu");
     }
   };
-
+  const canConfirmIssue =
+    issueForm.hospitalName &&
+    issueCart.length > 0 &&
+    issuePreview?.canIssue;
   const handleToggleComponent = (componentKey) => {
     setSelectedComponents((current) =>
       current.includes(componentKey)
@@ -718,103 +847,192 @@ const BloodStock = () => {
           </h2>
 
           <form onSubmit={handleIssueBlood} className="space-y-4">
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600">Danh sách yêu cầu xuất (thêm nhiều mục nếu cần)</p>
-              {issueItems.map((item, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nhóm máu</label>
-                    <select
-                      value={item.bloodType}
-                      onChange={(e) => setIssueItems((cur) => cur.map((v, i) => i === idx ? { ...v, bloodType: e.target.value } : v))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    >
-                      <option value="">Chọn nhóm máu</option>
-                      {bloodTypes.map((type) => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Số ml</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={item.requestedVolume}
-                      onChange={(e) => setIssueItems((cur) => cur.map((v, i) => i === idx ? { ...v, requestedVolume: e.target.value } : v))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="Ví dụ: 500"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Chế phẩm</label>
-                    <select
-                      value={item.componentType}
-                      onChange={(e) => setIssueItems((cur) => cur.map((v, i) => i === idx ? { ...v, componentType: e.target.value } : v))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    >
-                      <option value="">Máu toàn phần (mặc định)</option>
-                      <option value="whole_blood">Máu toàn phần</option>
-                      {bloodComponents.map((c) => (
-                        <option key={c.key} value={c.key}>{c.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-span-3 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIssueItems((cur) => cur.filter((_, i) => i !== idx))}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                    >
-                      Xóa
-                    </button>
-                    {idx === issueItems.length - 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setIssueItems((cur) => [...cur, { bloodType: "", requestedVolume: "", componentType: "" }])}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700"
-                      >
-                        Thêm mục
-                      </button>
-                    )}
-                  </div>
+            <div className="space-y-4">
+              <p className="text-sm font-medium text-gray-700">
+                Thêm chế phẩm vào giỏ xuất
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Chế phẩm
+                  </label>
+                  <select
+                    value={issueDraft.componentType}
+                    onChange={(e) =>
+                      setIssueDraft({ ...issueDraft, componentType: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="whole_blood">Máu toàn phần</option>
+                    {bloodComponents.map((component) => (
+                      <option key={component.key} value={component.key}>
+                        {component.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ))}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nhóm máu
+                  </label>
+                  <select
+                    value={issueDraft.bloodType}
+                    onChange={(e) =>
+                      setIssueDraft({ ...issueDraft, bloodType: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="">Chọn nhóm máu</option>
+                    {bloodTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Số ml
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={issueDraft.requestedVolume}
+                    onChange={(e) =>
+                      setIssueDraft({ ...issueDraft, requestedVolume: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Ví dụ: 500"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddToIssueCart}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Thêm vào giỏ
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-700">
+                    Giỏ xuất kho
+                  </p>
+                  <span className="text-xs text-gray-500">
+                    {issueCart.length} dòng
+                  </span>
+                </div>
+
+                {issueCart.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Chưa có chế phẩm nào trong giỏ xuất.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {issueCart.map((item, index) => (
+                      <div
+                        key={`${item.componentType}-${item.bloodType}-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-white border border-gray-200 px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">
+                            {componentLabels[item.componentType]} - Nhóm {item.bloodType}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Số lượng yêu cầu: {item.requestedVolume} ml
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFromIssueCart(index)}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePreviewIssueCart}
+                disabled={previewLoading || issueCart.length === 0 || !issueForm.hospitalName}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-red-600 hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+              >
+                {previewLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <SearchCheck className="w-4 h-4" />
+                )}
+                {previewLoading ? "Đang kiểm tra tồn kho..." : "Kiểm tra tồn kho"}
+              </button>
+
+              {issuePreview && (
+                <div
+                  className={`rounded-xl border p-4 text-sm ${issuePreview.canIssue
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                    }`}
+                >
+                  <p className="font-semibold">
+                    {issuePreview.canIssue
+                      ? "Đủ tồn kho để xuất máu"
+                      : "Không đủ tồn kho"}
+                  </p>
+
+                  {!issuePreview.canIssue && issuePreview.missingItems?.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {issuePreview.missingItems.map((item, index) => (
+                        <p key={`${item.componentType}-${item.bloodType}-${index}`}>
+                          Thiếu {item.missingVolume} ml - {componentLabels[item.componentType]} nhóm {item.bloodType}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {issuePreview.canIssue && issuePreview.plan?.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {issuePreview.plan.map((item, index) => (
+                        <p key={`${item.componentType}-${item.bloodType}-${index}`}>
+                          {componentLabels[item.componentType]} nhóm {item.bloodType}: yêu cầu {item.requestedVolume} ml, phân bổ {item.allocatedVolume} ml
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Loại chế phẩm / Bệnh viện nhận
+                Bệnh viện nhận
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={issueForm.componentType}
-                  onChange={(e) => setIssueForm({ ...issueForm, componentType: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  <option value="">Chọn chế phẩm (mặc định: Máu toàn phần)</option>
-                  <option value="whole_blood">Máu toàn phần</option>
-                  {bloodComponents.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
 
-                <select
-                  required
-                  value={issueForm.hospitalName}
-                  onChange={(e) =>
-                    setIssueForm({ ...issueForm, hospitalName: e.target.value })
-                  }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  <option value="">Chọn bệnh viện trong hệ thống</option>
-                  {hospitalOptions.map((hospital) => (
-                    <option key={hospital._id} value={hospital.name}>
-                      {hospital.name}{hospital.hasPendingRequest ? ' (Có yêu cầu)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select
+                required
+                value={issueForm.hospitalName}
+                onChange={(e) =>
+                  setIssueForm({ ...issueForm, hospitalName: e.target.value })
+                }
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              >
+                <option value="">Chọn bệnh viện trong hệ thống</option>
+                {hospitalOptions.map((hospital) => (
+                  <option key={hospital._id} value={hospital.name}>
+                    {hospital.name}
+                    {hospital.hasPendingRequest ? " (Có yêu cầu)" : ""}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -831,19 +1049,12 @@ const BloodStock = () => {
               />
             </div>
 
-            <button
-              type="button"
-              onClick={handleAutoSelectUnits}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-red-600 hover:bg-red-50"
-            >
-              <SearchCheck className="w-4 h-4" />
-              Tự động chọn túi phù hợp
-            </button>
 
-            
+
+
 
             <button
-              disabled={!(issueForm.hospitalName && issueItems.some(it => it.bloodType && Number(it.requestedVolume) > 0))}
+              disabled={!canConfirmIssue}
               className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               <Send className="w-4 h-4" />
