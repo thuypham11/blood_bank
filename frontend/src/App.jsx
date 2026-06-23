@@ -16,7 +16,6 @@ import BloodCamps from "./pages/bloodlab/BloodCamps";
 import BloodlabDashboard from "./pages/bloodlab/BloodlabDashboard";
 import BloodStock from "./pages/bloodlab/BloodStock";
 import LabProfile from "./pages/bloodlab/LabProfile";
-// Lab staff UI removed per request
 import GetAllFacilities from "./pages/admin/GetAllFacilities";
 import GetAllDonors from "./pages/admin/GetAllDonors";
 import AdminProfile from "./pages/admin/AdminProfile";
@@ -40,11 +39,14 @@ import Contact from "./components/contact/Contact";
 import DonorDonationHistory from "./pages/donor/DonorDonationHistory";
 import BookDonation from "./pages/donor/BookDonation";
 import MyAppointments from "./pages/donor/MyAppointments";
+import StaffDashboard from './pages/staff/StaffDashboard';
+import StaffQueue from './pages/staff/StaffQueue';
+import StaffLogin from './pages/staff/StaffLogin';
 
 function App() {
 	return (
 		<Routes>
-
+			
 			{/* Public Routes */}
 			<Route path="/" element={<LandingPage />} />
 			<Route path="/register" element={<Register />} />
@@ -53,7 +55,7 @@ function App() {
 			<Route path="/login" element={<Login />} />
 			<Route path="/about" element={<About />} />
 			<Route path="/contact" element={<Contact />} />
-
+			<Route path="/staff/login" element={<StaffLogin />} />
 			{/* Donor Routes */}
 			<Route
 				path="/donor"
@@ -69,7 +71,7 @@ function App() {
 				<Route path="test-results" element={<DonorTestResults />} />
 				<Route path="book" element={<BookDonation />} />
 				<Route path="my-appointments" element={<MyAppointments />} />
-
+				
 			</Route>
 
 			{/* Hospital Routes */}
@@ -99,8 +101,8 @@ function App() {
 				<Route path="inventory" element={<BloodStock />} />
 				{/* <Route path="camps" element={<BloodCamps />} /> */}
 				<Route path="profile" element={<LabProfile />} />
-				{/* Lab staff management/workspace removed */}
-				<Route path="requests" element={<LabManageRequests />} />
+			{/* <Route path="lab" element={<LabStaffManagement />} />  */}
+				{/* <Route path="requests" element={<LabManageRequests />} /> */}
 				<Route path="donor" element={<BloodLabDonor />} />
 			</Route>
 
@@ -112,7 +114,7 @@ function App() {
 						<DashboardLayout userRole="admin" />
 					</ProtectedRoute>
 				}>
-
+					
 				<Route index element={<AdminDashboard />} />
 				<Route path="verification" element={<AdminFacilities />} />
 				<Route path="donors" element={<GetAllDonors />} />
@@ -127,12 +129,28 @@ function App() {
 				<Route path="settings" element={<AdminSettings />} />
 				<Route path="profile" element={<AdminProfile />} />
 			</Route>
-
+			{/* Staff Routes */}
+      <Route
+        path="/staff"
+        element={
+          <ProtectedRoute allowedRoles={['staff']}>
+            <StaffDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/staff/queue/:sessionId"
+        element={
+          <ProtectedRoute allowedRoles={['staff']}>
+            <StaffQueue />
+          </ProtectedRoute>
+        }
+      />
 			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
 			<Route path="*" element={<LandingPage />} />
 		</Routes>
 
-
+		
 	);
 }
 

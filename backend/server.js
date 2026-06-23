@@ -25,7 +25,7 @@ import bloodLabRoutes from "./routes/bloodLabRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import donationStaffRoutes from './routes/donationStaffRoutes.js';
 import labStaffRoutes from './routes/labStaffRoutes.js';
-
+import staffRoutes from "./routes/staffRoutes.js";
 const app = express();
 const server = http.createServer(app);
 
@@ -55,6 +55,7 @@ app.use("/api/blood-lab", bloodLabRoutes);
 app.use("/api/lab-staff", labStaffRoutes);
 app.use("/api/hospital", hospitalRoutes);
 app.use('/api/staff', staffRoutes);
+app.use("/api/staff", staffRoutes);
 // Database connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected ✅"))
