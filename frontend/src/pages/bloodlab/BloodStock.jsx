@@ -433,7 +433,7 @@ const BloodStock = () => {
         }
       );
 
-      await fetchBloodUnits();
+      await Promise.all([fetchBloodUnits(), fetchExpiringUnits()]);
     } catch (error) {
       console.error("Import Blood Unit Error:", error.response?.data || error);
       alert(error.response?.data?.message || "Không thể nhập kho");
@@ -454,7 +454,7 @@ const BloodStock = () => {
         }
       );
 
-      await fetchBloodUnits();
+      await Promise.all([fetchBloodUnits(), fetchExpiringUnits()]);
     } catch (error) {
       console.error("Discard Blood Unit Error:", error.response?.data || error);
       alert(error.response?.data?.message || "Không thể loại bỏ túi máu");
@@ -633,7 +633,7 @@ const BloodStock = () => {
       setIssueCart([]);
       setIssuePreview(null);
 
-      await fetchBloodUnits();
+      await Promise.all([fetchBloodUnits(), fetchExpiringUnits()]);
     } catch (error) {
       console.error("Issue Blood Units Error:", error.response?.data || error);
       alert(error.response?.data?.message || "Không thể xuất máu");

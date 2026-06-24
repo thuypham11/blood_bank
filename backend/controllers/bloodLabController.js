@@ -3,6 +3,7 @@ import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import QRCode from "qrcode";
 import { generateBloodStorageId } from "../services/barcodeService.js";
+import { generateBloodConsumptionReport } from "./adminController.js";
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const SCREENING_VALUES = ["pending", "negative", "positive"];
 const DEFAULT_UNIT_VOLUME_ML = 450;
@@ -27,6 +28,18 @@ const requestLabFilter = (labId) => ({
         { lab: labId },
     ],
 });
+
+export const generateOwnBloodConsumptionReport = async (req, res) => {
+    if (req.user?.facilityType !== "blood-lab" && req.user?.role !== "blood-lab") {
+        return res.status(403).json({
+            success: false,
+            message: "Chi trung tam mau moi co quyen xem bao cao nay",
+        });
+    }
+
+    req.reportLabId = String(req.user._id);
+    return generateBloodConsumptionReport(req, res);
+};
 
 const calculatesStatusAfterScreening = (screeningResult) => {
     const values = Object.values(screeningResult);
@@ -405,33 +418,39 @@ export const createBloodUnit = async (req, res) => {
 export const checkBloodExpiry = async (req, res) => {
     try {
         const labId = req.user._id;
-        const thresholdDays = Number(req.query.threshold) || 3;
+        const requestedThreshold = Number(req.query.threshold ?? 3);
+        const thresholdDays = Number.isFinite(requestedThreshold) && requestedThreshold >= 0
+            ? Math.floor(requestedThreshold)
+            : 3;
         const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiryThreshold = new Date(today);
+        expiryThreshold.setDate(expiryThreshold.getDate() + thresholdDays);
+        expiryThreshold.setHours(23, 59, 59, 999);
 
         const availableUnits = await Blood.find({
-            bloodLab: labId,
+            $and: [
+                labFilter(labId),
+                {
+                    $or: [
+                        { expiryDate: { $gte: today, $lte: expiryThreshold } },
+                        { expirationDate: { $gte: today, $lte: expiryThreshold } },
+                    ],
+                },
+            ],
             status: "available",
-            expiryDate: { $gte: today }
         }).lean();
 
         const expiringUnits = availableUnits
-            .filter(unit => {
-                const expiry = new Date(unit.expiryDate);
-                const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-                return diffDays <= thresholdDays;
+            .map((unit) => {
+                const expiryDate = unit.expiryDate || unit.expirationDate;
+                return {
+                    ...unit,
+                    expiryDate,
+                    daysUntilExpiry: Math.ceil((new Date(expiryDate) - today) / 86400000),
+                };
             })
             .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-
-        await Facility.findByIdAndUpdate(labId, {
-            $push: {
-                history: {
-                    eventType: "Expiry Alert",
-                    description: `Checked blood expiry: ${expiringUnits.length} units near expiry`,
-                    date: new Date(),
-                    referenceIds: expiringUnits.map(u => u._id)
-                }
-            }
-        });
 
         res.json({ success: true, expiringUnits });
     } catch (error) {

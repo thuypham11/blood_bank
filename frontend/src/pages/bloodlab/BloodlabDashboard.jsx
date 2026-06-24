@@ -29,6 +29,7 @@ const BloodLabDashboard = () => {
 	const [dashboard, setDashboard] = useState(null);
 	const [stock, setStock] = useState([]);
 	const [lab, setLab] = useState(null);
+	const [consumptionReport, setConsumptionReport] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 
@@ -42,7 +43,7 @@ const BloodLabDashboard = () => {
 				return;
 			}
 
-			const [dashboardRes, stockRes, profileRes] = await Promise.all([ // thực hiện 3 request song song để lấy dữ liệu dashboard, tồn kho máu và thông tin phòng xét nghiệm
+			const [dashboardRes, stockRes, profileRes, consumptionRes] = await Promise.all([ // thực hiện các request song song để lấy dữ liệu dashboard
 				axios
 					.get(`${API_URL}/dashboard`, {
 						headers: { Authorization: `Bearer ${token}` },
@@ -66,9 +67,13 @@ const BloodLabDashboard = () => {
 							headers: { Authorization: `Bearer ${token}` },
 						}),
 					),
+				axios.get(`${API_URL}/reports/blood-consumption?rangeDays=90&forecastDays=30`, {
+					headers: { Authorization: `Bearer ${token}` },
+				}),
 			]);
 
 			setDashboard(dashboardRes.data);
+			setConsumptionReport(consumptionRes.data);
 
 			let stockData = [];
 			if (stockRes.data.data) {
@@ -237,6 +242,50 @@ const BloodLabDashboard = () => {
 				/>
 			</div>
 
+			{consumptionReport && (
+				<Section
+					title="Dự Báo Tiêu Thụ Máu"
+					icon={<TrendingUp className="w-5 h-5 text-red-600" />}
+					subtitle={`Dựa trên ${consumptionReport.filters?.rangeDays || 90} ngày gần nhất, dự báo ${consumptionReport.filters?.forecastDays || 30} ngày tới`}
+					className="mb-8">
+					<div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+						<ReportMetric label="Tồn kho" value={consumptionReport.summary?.currentStockMl} suffix="ml" />
+						<ReportMetric label="Nhu cầu dự báo" value={consumptionReport.summary?.forecastDemandMl} suffix="ml" />
+						<ReportMetric label="Cần bổ sung" value={consumptionReport.summary?.reorderSuggestionMl} suffix="ml" alert />
+						<ReportMetric label="Sắp hết hạn" value={consumptionReport.summary?.expiringSoonMl} suffix="ml" />
+					</div>
+
+					<div className="overflow-x-auto">
+						<table className="w-full min-w-175 text-sm">
+							<thead>
+								<tr className="border-b border-gray-200 text-left text-xs uppercase text-gray-500">
+									<th className="pb-3">Nhóm máu</th>
+									<th className="pb-3 text-right">Tồn kho</th>
+									<th className="pb-3 text-right">Trung bình/ngày</th>
+									<th className="pb-3 text-right">Dự báo</th>
+									<th className="pb-3 text-right">Cần bổ sung</th>
+									<th className="pb-3 text-right">Rủi ro</th>
+								</tr>
+							</thead>
+							<tbody className="divide-y divide-gray-100">
+								{consumptionReport.byBloodType
+									?.filter((item) => item.currentStockMl > 0 || item.forecastDemandMl > 0 || item.openDemandMl > 0)
+									.map((item) => (
+										<tr key={item.bloodType}>
+											<td className="py-3 font-bold text-red-600">{item.bloodType}</td>
+											<td className="py-3 text-right">{Number(item.currentStockMl || 0).toLocaleString("vi-VN")} ml</td>
+											<td className="py-3 text-right">{Number(item.averageDailyDemandMl || 0).toLocaleString("vi-VN")} ml</td>
+											<td className="py-3 text-right">{Number(item.forecastDemandMl || 0).toLocaleString("vi-VN")} ml</td>
+											<td className="py-3 text-right font-semibold">{Number(item.reorderSuggestionMl || 0).toLocaleString("vi-VN")} ml</td>
+											<td className="py-3 text-right"><RiskBadge level={item.riskLevel} /></td>
+										</tr>
+									))}
+							</tbody>
+						</table>
+					</div>
+				</Section>
+			)}
+
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 				{/* Phần kho máu */}
 				<Section
@@ -378,6 +427,26 @@ const Section = ({ title, icon, subtitle, children, className = "" }) => (
 		{children}
 	</div>
 );
+
+const ReportMetric = ({ label, value = 0, suffix = "", alert = false }) => (
+	<div className={`rounded-xl border p-4 ${alert && value > 0 ? "border-red-200 bg-red-50" : "border-gray-100 bg-gray-50"}`}>
+		<p className="text-xs font-semibold uppercase text-gray-500">{label}</p>
+		<p className={`mt-1 text-xl font-bold ${alert && value > 0 ? "text-red-600" : "text-gray-800"}`}>
+			{Number(value || 0).toLocaleString("vi-VN")} {suffix}
+		</p>
+	</div>
+);
+
+const RiskBadge = ({ level }) => {
+	const config = {
+		critical: { label: "Nguy cấp", className: "bg-red-100 text-red-700" },
+		high: { label: "Cao", className: "bg-orange-100 text-orange-700" },
+		medium: { label: "Trung bình", className: "bg-yellow-100 text-yellow-700" },
+		low: { label: "Thấp", className: "bg-green-100 text-green-700" },
+	};
+	const current = config[level] || config.low;
+	return <span className={`rounded-full px-2 py-1 text-xs font-semibold ${current.className}`}>{current.label}</span>;
+};
 
 const LabInfo = ({ icon, label, value, truncate = false }) => (
 	<div className="flex items-start gap-3">

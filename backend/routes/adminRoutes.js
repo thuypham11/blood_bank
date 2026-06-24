@@ -1,6 +1,6 @@
 import express from "express";
 import { protect } from "../middlewares/authMiddleware.js";
-import { requireRole } from "../middlewares/rbacMiddleware.js";
+import { requirePermission, requireRole } from "../middlewares/rbacMiddleware.js";
 import {
   // Dashboard
   getDashboardStats,
@@ -118,8 +118,8 @@ router.delete("/camps/:id", protect, requireRole("superadmin"), deleteCamp);
 
 // ── Audit Logs & Reports ──────────────────────────────────────
 router.get("/audit-logs", protect, requireRole("superadmin"), getAuditLogs);
-router.get("/reports/blood-consumption", protect, generateBloodConsumptionReport);
-router.get("/reports", protect, getAdvancedReports);
+router.get("/reports/blood-consumption", protect, requirePermission("view_reports"), generateBloodConsumptionReport);
+router.get("/reports", protect, requirePermission("view_reports"), getAdvancedReports);
 
 // ── Notifications ─────────────────────────────────────────────
 router.post("/notifications/broadcast", protect, requireRole("superadmin"), broadcastNotification);

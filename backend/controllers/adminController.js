@@ -716,7 +716,17 @@ export const generateBloodConsumptionReport = async (req, res) => {
     }
 
     const actualRangeDays = Math.max(1, Math.ceil((endDate - startDate + 1) / MS_PER_DAY));
-    const { labId, hospitalId } = req.query;
+    const { hospitalId } = req.query;
+    const labId = req.reportLabId || req.query.labId;
+
+    if ((labId && !mongoose.Types.ObjectId.isValid(labId)) ||
+        (hospitalId && !mongoose.Types.ObjectId.isValid(hospitalId))) {
+      return res.status(400).json({
+        success: false,
+        message: "Ma blood lab hoac benh vien khong hop le",
+      });
+    }
+
     const requestFilter = {};
     const aggregateRequestFilter = {};
     const stockFilter = {};
@@ -748,6 +758,15 @@ export const generateBloodConsumptionReport = async (req, res) => {
         { updatedAt: { $gte: startDate, $lte: endDate }, status: { $in: ["completed", "rejected"] } },
       ],
     };
+    const aggregateRangeRequestFilter = {
+      ...aggregateRequestFilter,
+      $or: [
+        { createdAt: { $gte: startDate, $lte: endDate } },
+        { confirmedAt: { $gte: startDate, $lte: endDate } },
+        { issuedAt: { $gte: startDate, $lte: endDate } },
+        { updatedAt: { $gte: startDate, $lte: endDate }, status: { $in: ["completed", "rejected"] } },
+      ],
+    };
 
     const [requests, openRequests, issuedUnits, stockUnits, topHospitals, topLabs] = await Promise.all([
       BloodRequest.find(rangeRequestFilter).lean(),
@@ -759,7 +778,7 @@ export const generateBloodConsumptionReport = async (req, res) => {
       BloodModel.find(issuedFilter).lean(),
       BloodModel.find(stockFilter).lean(),
       BloodRequest.aggregate([
-        { $match: aggregateRequestFilter },
+        { $match: aggregateRangeRequestFilter },
         { $group: { _id: "$hospitalId", requests: { $sum: 1 }, units: { $sum: "$units" } } },
         { $sort: { units: -1 } },
         { $limit: 5 },
@@ -768,7 +787,7 @@ export const generateBloodConsumptionReport = async (req, res) => {
         { $project: { _id: 1, name: "$facility.name", requests: 1, units: 1 } },
       ]),
       BloodRequest.aggregate([
-        { $match: aggregateRequestFilter },
+        { $match: aggregateRangeRequestFilter },
         { $group: { _id: "$labId", requests: { $sum: 1 }, units: { $sum: "$units" } } },
         { $sort: { units: -1 } },
         { $limit: 5 },
@@ -795,6 +814,7 @@ export const generateBloodConsumptionReport = async (req, res) => {
         openDemandMl: 0,
         issuedUnits: 0,
         issuedVolumeMl: 0,
+        fulfilledRequestVolumeMl: 0,
         fulfilledVolumeMl: 0,
       };
       return acc;
@@ -859,6 +879,8 @@ export const generateBloodConsumptionReport = async (req, res) => {
       }
 
       if (request.status === "completed") {
+        const fulfilledVolume = toFiniteNumber(request.fulfilledVolume) || units * DEFAULT_UNIT_VOLUME_ML;
+        reportByType[bloodType].fulfilledRequestVolumeMl += fulfilledVolume;
         const completedBucket = getDailyBucket(getDateKey(request.confirmedAt || request.issuedAt || request.updatedAt));
         if (completedBucket) {
           completedBucket.completedUnits += units;
@@ -891,7 +913,7 @@ export const generateBloodConsumptionReport = async (req, res) => {
 
     const byBloodType = BLOOD_TYPES.map((type) => {
       const item = reportByType[type];
-      const demandBasisMl = Math.max(item.issuedVolumeMl, item.completedUnits * DEFAULT_UNIT_VOLUME_ML, item.requestedVolumeMl);
+      const demandBasisMl = Math.max(item.issuedVolumeMl, item.fulfilledRequestVolumeMl);
       const averageDailyDemandMl = Math.round(demandBasisMl / actualRangeDays);
       const forecastDemandMl = Math.round(averageDailyDemandMl * forecastDays);
       const projectedNeedMl = forecastDemandMl + item.openDemandMl;
@@ -921,6 +943,7 @@ export const generateBloodConsumptionReport = async (req, res) => {
 
     const totals = byBloodType.reduce((acc, item) => {
       acc.currentStockMl += item.currentStockMl;
+      acc.expiringSoonMl += item.expiringSoonMl;
       acc.requestedUnits += item.requestedUnits;
       acc.pendingUnits += item.pendingUnits;
       acc.acceptedUnits += item.acceptedUnits;
@@ -933,6 +956,7 @@ export const generateBloodConsumptionReport = async (req, res) => {
       return acc;
     }, {
       currentStockMl: 0,
+      expiringSoonMl: 0,
       requestedUnits: 0,
       pendingUnits: 0,
       acceptedUnits: 0,

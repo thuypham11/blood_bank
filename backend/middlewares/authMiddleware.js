@@ -23,7 +23,11 @@ export const protect = async (req, res, next) => {
       if (!user)
         return res.status(401).json({ message: "User not found or unauthorized" });
 
-      req.user = { id: user._id, role: decoded.role };
+      req.user = {
+        id: user._id,
+        role: user.role || decoded.role,
+        permissions: user.permissions || [],
+      };
       next();
     } catch (error) {
       console.error("Auth middleware error:", error);
