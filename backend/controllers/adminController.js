@@ -391,6 +391,7 @@ export const getBloodStockUnits = async (req, res) => {
     const total = await BloodModel.countDocuments(filter);
     const units = await BloodModel.find(filter)
       .populate("bloodLab", "name address")
+      .populate("donor", "fullName bloodGroup phone")
       .sort({ expiryDate: 1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
@@ -403,22 +404,47 @@ export const getBloodStockUnits = async (req, res) => {
 
 export const addBloodUnit = async (req, res) => {
   try {
-    const { bloodGroup, quantity, bloodLab, collectionDate, screeningResult } = req.body;
+    const { bloodGroup, quantity, bloodLab, collectionDate, screeningResult, donorId } = req.body;
     if (!bloodGroup) return res.status(400).json({ success: false, message: "Nhóm máu là bắt buộc" });
     const barcode = `BLD-${Date.now()}-${Math.floor(Math.random() * 99999)}`;
+
+    // Validate donor if provided
+    let donor = null;
+    if (donorId) {
+      donor = await Donor.findById(donorId);
+      if (!donor) return res.status(404).json({ success: false, message: "Không tìm thấy người hiến máu" });
+    }
+
+    const collDate = collectionDate ? new Date(collectionDate) : new Date();
     const unit = await BloodModel.create({
       barcode, bloodGroup, bloodType: bloodGroup,
       quantity: quantity || 250,
       bloodLab,
-      collectionDate: collectionDate || new Date(),
+      donor: donorId || undefined,
+      collectionDate: collDate,
       screeningResult: screeningResult || { hiv: "pending", hbv: "pending", hcv: "pending" },
       status: "pending_testing",
     });
+
+    // ✅ Nếu có người hiến máu, cập nhật lịch sử hiến máu của họ
+    if (donor) {
+      donor.donationHistory.push({
+        donationDate: collDate,
+        facility: bloodLab || undefined,
+        bloodGroup: bloodGroup,
+        quantity: quantity || 250,
+        bloodUnitId: unit._id,
+        verified: false,
+      });
+      donor.lastDonationDate = collDate;
+      await donor.save();
+    }
+
     await AuditLog.create({
       action: "ADD_BLOOD_UNIT",
       performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
       target: { targetType: "Blood", targetId: unit._id },
-      description: `Nhập kho ${quantity}ml ${bloodGroup} (${barcode})`,
+      description: `Nhập kho ${quantity}ml ${bloodGroup} (${barcode})${donor ? ` - Người hiến: ${donor.fullName}` : ""}`,
       ipAddress: req.ip,
     });
     res.status(201).json({ success: true, message: "Đã thêm đơn vị máu vào kho", unit });
@@ -893,5 +919,99 @@ export const updateCamp = async (req, res) => {
     res.status(200).json({ success: true, message: "Cập nhật thông tin chiến dịch thành công", camp });
   } catch (err) {
     res.status(500).json({ success: false, message: "Lỗi cập nhật chiến dịch", error: err.message });
+  }
+};
+
+/* ==============================================================
+   SYNC BLOOD UNITS WITH DONORS (One-time data migration)
+   ============================================================== */
+export const syncBloodUnitsWithDonors = async (req, res) => {
+  try {
+    // 1. Lấy tất cả đơn vị máu chưa có donor
+    const unlinkedUnits = await BloodModel.find({ donor: { $exists: false } });
+
+    if (unlinkedUnits.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Tất cả đơn vị máu đã được liên kết với người hiến máu!",
+        linked: 0,
+        skipped: 0,
+      });
+    }
+
+    // 2. Lấy tất cả donor, nhóm theo nhóm máu
+    const allDonors = await Donor.find({}).select("_id fullName bloodGroup donationHistory lastDonationDate");
+    const donorsByBloodGroup = {};
+    allDonors.forEach(d => {
+      if (!donorsByBloodGroup[d.bloodGroup]) donorsByBloodGroup[d.bloodGroup] = [];
+      donorsByBloodGroup[d.bloodGroup].push(d);
+    });
+
+    let linked = 0;
+    let skipped = 0;
+    const donorUpdateMap = {}; // donorId -> { donor, newEntries[] }
+
+    for (const unit of unlinkedUnits) {
+      const bg = unit.bloodGroup;
+      const candidates = donorsByBloodGroup[bg];
+
+      if (!candidates || candidates.length === 0) {
+        skipped++;
+        continue;
+      }
+
+      // Chọn donor theo round-robin (phân bổ đều)
+      const donorIndex = linked % candidates.length;
+      const donor = candidates[donorIndex];
+
+      // Cập nhật đơn vị máu — gán donor
+      await BloodModel.findByIdAndUpdate(unit._id, { donor: donor._id });
+
+      // Gom thay đổi donor lại
+      if (!donorUpdateMap[donor._id.toString()]) {
+        donorUpdateMap[donor._id.toString()] = { donor, newEntries: [] };
+      }
+      donorUpdateMap[donor._id.toString()].newEntries.push({
+        donationDate: unit.collectionDate || unit.createdAt || new Date(),
+        facility: unit.bloodLab || undefined,
+        bloodGroup: bg,
+        quantity: unit.quantity || 250,
+        bloodUnitId: unit._id,
+        verified: true,
+      });
+
+      linked++;
+    }
+
+    // 3. Cập nhật donationHistory cho từng donor
+    for (const key of Object.keys(donorUpdateMap)) {
+      const { donor, newEntries } = donorUpdateMap[key];
+      const sortedEntries = newEntries.sort((a, b) => new Date(b.donationDate) - new Date(a.donationDate));
+      const latestDate = sortedEntries[0].donationDate;
+
+      await Donor.findByIdAndUpdate(donor._id, {
+        $push: { donationHistory: { $each: newEntries } },
+        $set: { lastDonationDate: latestDate },
+      });
+    }
+
+    await AuditLog.create({
+      action: "SYNC_BLOOD_DONATIONS",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "System", targetId: req.user?.id },
+      description: `Đồng bộ dữ liệu: liên kết ${linked} đơn vị máu với người hiến. Bỏ qua ${skipped} đơn vị không tìm được donor phù hợp.`,
+      ipAddress: req.ip,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `✅ Đồng bộ thành công! Đã liên kết ${linked} đơn vị máu với người hiến máu.`,
+      linked,
+      skipped,
+      donorsUpdated: Object.keys(donorUpdateMap).length,
+    });
+  } catch (err) {
+    console.error("syncBloodUnitsWithDonors error:", err);
+    res.status(500).json({ success: false, message: "Lỗi đồng bộ dữ liệu: " + err.message });
   }
 };

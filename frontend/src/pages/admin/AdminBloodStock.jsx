@@ -22,10 +22,13 @@ const AdminBloodStock = () => {
   const [successMsg, setSuccessMsg] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [labs, setLabs] = useState([]);
+  const [donors, setDonors] = useState([]);
+  const [donorSearch, setDonorSearch] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const [filters, setFilters] = useState({ bloodGroup: "", status: "", page: 1, limit: 15 });
   const [isEditing, setIsEditing] = useState(false);
-  const [addForm, setAddForm] = useState({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available" });
+  const [addForm, setAddForm] = useState({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available", donorId: "" });
 
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -59,7 +62,14 @@ const AdminBloodStock = () => {
     } catch (_) { }
   }, []);
 
-  useEffect(() => { fetchOverview(); fetchLabs(); }, []);
+  const fetchDonors = useCallback(async () => {
+    try {
+      const { data } = await axios.get("http://localhost:5000/api/admin/donors?limit=200", { headers });
+      setDonors(data.donors || []);
+    } catch (_) { }
+  }, []);
+
+  useEffect(() => { fetchOverview(); fetchLabs(); fetchDonors(); }, []);
   useEffect(() => { fetchUnits(); }, [fetchUnits]);
 
   const handleAddUnit = async (e) => {
@@ -72,8 +82,9 @@ const AdminBloodStock = () => {
       }
       setSuccessMsg(isEditing ? "✅ Đã cập nhật đơn vị máu!" : "✅ Đã thêm đơn vị máu vào kho!");
       setShowAddModal(false);
-      setAddForm({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available" });
-      fetchOverview(); fetchUnits();
+      setAddForm({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available", donorId: "" });
+      setDonorSearch("");
+      fetchOverview(); fetchUnits(); fetchDonors();
     } catch (err) { setError(err.response?.data?.message || "Lỗi xử lý đơn vị"); }
     finally { setTimeout(() => setSuccessMsg(""), 3000); }
   };
@@ -90,8 +101,24 @@ const AdminBloodStock = () => {
 
   const openAddForm = () => {
     setIsEditing(false);
-    setAddForm({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available" });
+    setAddForm({ bloodGroup: "A+", quantity: 250, bloodLab: "", collectionDate: "", status: "available", donorId: "" });
+    setDonorSearch("");
     setShowAddModal(true);
+  };
+
+  const handleSyncData = async () => {
+    if (!window.confirm("Thao tác này sẽ tự động liên kết tất cả đơn vị máu chưa có người hiến với donor phù hợp (theo nhóm máu). Tiếp tục?")) return;
+    setSyncing(true);
+    try {
+      const { data } = await axios.post("http://localhost:5000/api/admin/sync-blood-donors", {}, { headers });
+      setSuccessMsg(`${data.message} (${data.donorsUpdated} người hiến được cập nhật, bỏ qua ${data.skipped} đơn vị)`);
+      fetchOverview(); fetchUnits(); fetchDonors();
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi đồng bộ dữ liệu");
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSuccessMsg(""), 6000);
+    }
   };
 
   const openEditForm = (u) => {
@@ -150,6 +177,13 @@ const AdminBloodStock = () => {
         </div>
         <div className="flex gap-3">
           <button onClick={fetchOverview} className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium text-gray-700"><RefreshCw size={14} /></button>
+          <button
+            onClick={handleSyncData}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold transition-all"
+          >
+            {syncing ? <><RefreshCw size={14} className="animate-spin" /> Đang đồng bộ...</> : <>🔄 Đồng Bộ Dữ Liệu</>}
+          </button>
           <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all">
             <Plus size={16} /> Nhập Kho Mới
           </button>
@@ -250,6 +284,7 @@ const AdminBloodStock = () => {
                     <th className="p-3 font-semibold">Mã Vạch</th>
                     <th className="p-3 font-semibold text-center">Nhóm</th>
                     <th className="p-3 font-semibold text-center">Thể Tích</th>
+                    <th className="p-3 font-semibold">Người Hiến</th>
                     <th className="p-3 font-semibold">Kho</th>
                     <th className="p-3 font-semibold text-center">Trạng Thái</th>
                     <th className="p-3 font-semibold">Thu Thập</th>
@@ -265,6 +300,16 @@ const AdminBloodStock = () => {
                           <td className="p-3 font-mono text-xs text-gray-500">{u.barcode || u._id.toString().slice(-8)}</td>
                           <td className="p-3 text-center"><span className="font-bold text-red-600 text-sm">{u.bloodGroup}</span></td>
                           <td className="p-3 text-center text-gray-700">{u.quantity}ml</td>
+                          <td className="p-3 text-xs text-gray-700">
+                            {u.donor ? (
+                              <span className="flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
+                                {u.donor.fullName}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic">Không rõ</span>
+                            )}
+                          </td>
                           <td className="p-3 text-xs text-gray-600 flex items-center gap-1"><Building size={11} className="text-blue-400" />{u.bloodLab?.name || "N/A"}</td>
                           <td className="p-3 text-center">{statusBadge(u.status)}</td>
                           <td className="p-3 text-xs text-gray-500">{u.collectionDate ? new Date(u.collectionDate).toLocaleDateString("vi-VN") : "—"}</td>
@@ -284,7 +329,7 @@ const AdminBloodStock = () => {
                         </tr>
                       );
                     })}
-                    {units.length === 0 && <tr><td colSpan="8" className="p-8 text-center text-gray-400">Không có đơn vị máu nào.</td></tr>}
+                    {units.length === 0 && <tr><td colSpan="9" className="p-8 text-center text-gray-400">Không có đơn vị máu nào.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -329,9 +374,43 @@ const AdminBloodStock = () => {
                     className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm" />
                 </div>
               </div>
+              {/* Chọn người hiến máu */}
+              {!isEditing && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Người Hiến Máu</label>
+                  <input
+                    type="text"
+                    placeholder="Tìm theo tên hoặc email..."
+                    value={donorSearch}
+                    onChange={e => setDonorSearch(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm mb-2"
+                  />
+                  <select
+                    value={addForm.donorId}
+                    onChange={e => setAddForm(f => ({ ...f, donorId: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm"
+                  >
+                    <option value="">-- Không liên kết / Ẩn danh --</option>
+                    {donors
+                      .filter(d => !donorSearch ||
+                        d.fullName?.toLowerCase().includes(donorSearch.toLowerCase()) ||
+                        d.email?.toLowerCase().includes(donorSearch.toLowerCase())
+                      )
+                      .map(d => (
+                        <option key={d._id} value={d._id}>
+                          {d.fullName} ({d.bloodGroup}) — {d.phone}
+                        </option>
+                      ))
+                    }
+                  </select>
+                  {addForm.donorId && (
+                    <p className="text-xs text-green-600 mt-1">✅ Lịch sử hiến máu sẽ được cập nhật tự động</p>
+                  )}
+                </div>
+              )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Kho Lưu Trữ *</label>
-                <select required value={addForm.bloodLab} onChange={e => setAddForm(f => ({ ...f, bloodLab: e.target.value }))}
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Kho Lưu Trữ</label>
+                <select value={addForm.bloodLab} onChange={e => setAddForm(f => ({ ...f, bloodLab: e.target.value }))}
                   className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none text-sm">
                   <option value="">-- Chọn Lab --</option>
                   {labs.map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
