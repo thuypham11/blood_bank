@@ -169,7 +169,7 @@ export const updateProfile = async (req, res) => {
 				await session.abortTransaction();
 				return res.status(400).json({
 					success: false,
-					message: "Password must be at least 6 characters long",
+					message: "Mật khẩu cần dài ít nhất 6 ký tự",
 				});
 			}
 			const salt = await bcrypt.genSalt(12);

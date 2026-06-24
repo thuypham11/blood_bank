@@ -1,16 +1,17 @@
 export const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
-export const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells"];
+export const BLOOD_COMPONENTS = ["red_cells", "platelets", "plasma"];
 export const BLOOD_BAG_VOLUMES = [250, 350, 450];
 
 export const COMPONENT_LABELS = {
-	red_cells: "Hong cau",
-	platelets: "Tieu cau",
-	white_cells: "Bach cau",
+	red_cells: "Hồng cầu",
+	platelets: "Tiểu cầu",
+	plasma: "Huyết tương",
 };
 
 export const isValidBloodVolume = (volume) => {
 	const target = Number(volume);
-	if (!Number.isFinite(target) || target < Math.min(...BLOOD_BAG_VOLUMES) || target % 1 !== 0) return false;
+	if (!Number.isFinite(target) || target < Math.min(...BLOOD_BAG_VOLUMES) || target % 1 !== 0)
+		return false;
 
 	const reachable = new Array(target + 1).fill(false);
 	reachable[0] = true;
@@ -23,22 +24,42 @@ export const isValidBloodVolume = (volume) => {
 const normalizeVolume = (item) => Number(item.volumeMl ?? item.units ?? item.quantity);
 
 export const normalizeBloodItems = ({ bloodItems, bloodType, units, volumeMl } = {}) => {
-	const source = Array.isArray(bloodItems) && bloodItems.length ? bloodItems : bloodType ? [{ bloodType, units, volumeMl }] : [];
+	const source =
+		Array.isArray(bloodItems) && bloodItems.length
+			? bloodItems
+			: bloodType
+				? [{ bloodType, units, volumeMl }]
+				: [];
 	const merged = new Map();
 
 	source.forEach((item) => {
-		const type = String(item.bloodType || "").trim().toUpperCase();
+		const type = String(item.bloodType || "")
+			.trim()
+			.toUpperCase();
 		const amount = normalizeVolume(item);
 		if (!BLOOD_TYPES.includes(type) || !isValidBloodVolume(amount)) return;
 		merged.set(type, (merged.get(type) || 0) + amount);
 	});
 
-	return Array.from(merged, ([type, amount]) => ({ bloodType: type, units: amount, volumeMl: amount }));
+	return Array.from(merged, ([type, amount]) => ({
+		bloodType: type,
+		units: amount,
+		volumeMl: amount,
+	}));
 };
 
-export const normalizeComponentItems = ({ componentItems, componentType, units, volumeMl } = {}) => {
+export const normalizeComponentItems = ({
+	componentItems,
+	componentType,
+	units,
+	volumeMl,
+} = {}) => {
 	const source =
-		Array.isArray(componentItems) && componentItems.length ? componentItems : componentType ? [{ componentType, units, volumeMl }] : [];
+		Array.isArray(componentItems) && componentItems.length
+			? componentItems
+			: componentType
+				? [{ componentType, units, volumeMl }]
+				: [];
 	const merged = new Map();
 
 	source.forEach((item) => {
@@ -48,7 +69,11 @@ export const normalizeComponentItems = ({ componentItems, componentType, units, 
 		merged.set(type, (merged.get(type) || 0) + amount);
 	});
 
-	return Array.from(merged, ([type, amount]) => ({ componentType: type, units: amount, volumeMl: amount }));
+	return Array.from(merged, ([type, amount]) => ({
+		componentType: type,
+		units: amount,
+		volumeMl: amount,
+	}));
 };
 
 export const normalizeProductItems = (payload = {}) => ({
@@ -57,12 +82,17 @@ export const normalizeProductItems = (payload = {}) => ({
 });
 
 export const formatProductItems = ({ bloodItems = [], componentItems = [] } = {}) => {
-	const bloodText = bloodItems.map((item) => `${item.volumeMl || item.units}ml mau toan phan ${item.bloodType}`);
+	const bloodText = bloodItems.map(
+		(item) => `${item.volumeMl || item.units}ml mau toan phan ${item.bloodType}`,
+	);
 	const componentText = componentItems.map(
-		(item) => `${item.volumeMl || item.units}ml che pham ${COMPONENT_LABELS[item.componentType] || item.componentType}`,
+		(item) =>
+			`${item.volumeMl || item.units}ml che pham ${COMPONENT_LABELS[item.componentType] || item.componentType}`,
 	);
 	return [...bloodText, ...componentText].join(", ");
 };
 
 export const getStockProductKey = (item) =>
-	item.productType === "blood_component" ? `component:${item.componentType}` : `whole:${item.bloodGroup || item.bloodType}`;
+	item.productType === "blood_component"
+		? `component:${item.componentType}`
+		: `whole:${item.bloodGroup || item.bloodType}`;

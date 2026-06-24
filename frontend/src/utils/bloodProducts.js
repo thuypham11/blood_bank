@@ -1,9 +1,9 @@
 export const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
 export const BLOOD_COMPONENTS = [
-	{ value: "red_cells", label: "Hong cau" },
-	{ value: "platelets", label: "Tieu cau" },
-	{ value: "white_cells", label: "Bach cau" },
+	{ value: "red_cells", label: "Hồng cầu" },
+	{ value: "platelets", label: "Tiểu cầu" },
+	{ value: "plasma", label: "Huyết tương" },
 ];
 
 export const BAG_VOLUMES = [250, 350, 450];
@@ -35,17 +35,24 @@ export const buildComponentItems = (volumes) =>
 	})).filter((item) => item.volumeMl > 0);
 
 export const validateProductItems = (bloodItems, componentItems) => {
-	const invalid = [...bloodItems, ...componentItems].filter((item) => !isValidBloodVolume(item.volumeMl));
+	const invalid = [...bloodItems, ...componentItems].filter(
+		(item) => !isValidBloodVolume(item.volumeMl),
+	);
 	return invalid.length === 0;
 };
 
-export const componentLabel = (value) => BLOOD_COMPONENTS.find((item) => item.value === value)?.label || value;
+export const componentLabel = (value) =>
+	BLOOD_COMPONENTS.find((item) => item.value === value)?.label || value;
 
 export const productLabel = (item) =>
-	item.productType === "blood_component" ? componentLabel(item.componentType) : item.bloodGroup || item.bloodType;
+	item.productType === "blood_component"
+		? componentLabel(item.componentType)
+		: item.bloodGroup || item.bloodType;
 
 export const formatRequestProducts = (request) => {
-	const blood = (request.bloodItems || []).map((item) => `${item.bloodType}: ${item.volumeMl || item.units}ml`);
+	const blood = (request.bloodItems || []).map(
+		(item) => `${item.bloodType}: ${item.volumeMl || item.units}ml`,
+	);
 	const components = (request.componentItems || []).map(
 		(item) => `${componentLabel(item.componentType)}: ${item.volumeMl || item.units}ml`,
 	);

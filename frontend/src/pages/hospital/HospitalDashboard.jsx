@@ -377,7 +377,7 @@ const HospitalDashboard = () => {
 
 								{bloodStock.length > 6 && (
 									<button
-										onClick={() => (window.location.href = "/hospital/blood-stock")}
+										onClick={() => (window.location.href = "/hospital/blood-request-create")}
 										className="w-full text-center text-red-600 hover:text-red-700 py-2 border border-dashed border-gray-300 rounded-lg">
 										Xem Tất Cả {bloodStock.length} Nhóm Máu
 									</button>
@@ -425,7 +425,7 @@ const HospitalDashboard = () => {
 
 								{requests.length > 5 && (
 									<button
-										onClick={() => (window.location.href = "/hospital/request-history")}
+										onClick={() => (window.location.href = "/hospital/blood-request-history")}
 										className="w-full text-center text-red-600 hover:text-red-700 py-2 border border-dashed border-gray-300 rounded-lg">
 										Xem Tất Cả {requests.length} Yêu Cầu
 									</button>

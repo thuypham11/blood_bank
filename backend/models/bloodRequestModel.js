@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
-const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells"];
+const BLOOD_COMPONENTS = ["red_cells", "platelets", "plasma"];
 
 const bloodItemSchema = new mongoose.Schema(
 	{
@@ -121,14 +121,17 @@ bloodRequestSchema.pre("validate", function (next) {
 	const componentItems = this.componentItems || [];
 
 	if (!bloodItems.length && !componentItems.length) {
-		return next(new Error("Can request at least one whole blood group or blood component."));
+		return next(new Error("Có thể yêu cầu ít nhất một nhóm máu toàn phần hoặc thành phần máu."));
 	}
 
 	const totalUnits = [...bloodItems, ...componentItems].reduce(
 		(sum, item) => sum + Number(item.units || item.volumeMl || 0),
 		0,
 	);
-	this.bloodType = [...bloodItems.map((item) => item.bloodType), ...componentItems.map((item) => item.componentType)].join(", ");
+	this.bloodType = [
+		...bloodItems.map((item) => item.bloodType),
+		...componentItems.map((item) => item.componentType),
+	].join(", ");
 	this.units = totalUnits;
 
 	next();
