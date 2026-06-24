@@ -6,9 +6,10 @@ import BloodModel from "../models/BloodModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import AuditLog from "../models/AuditLogModel.js";
 import Notification from "../models/NotificationModel.js";
-import DonationSession from "../models/DonationSession.js";   // ← thêm
-import Staff from "../models/Staff.js";         
+import DonationSession from "../models/DonationSession.js";
+import Staff from "../models/Staff.js";
 import mongoose from "mongoose";
+import { sendDonorPasswordReset } from "../services/emailService.js";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const DEFAULT_UNIT_VOLUME_ML = 450;
@@ -1244,6 +1245,57 @@ export const deleteBloodRequest = async (req, res) => {
     res.status(200).json({ success: true, message: "Đã xóa yêu cầu cấp máu" });
   } catch (err) {
     res.status(500).json({ success: false, message: "Lỗi xóa yêu cầu", error: err.message });
+  }
+};
+
+/* ==============================================================
+   RESET DONOR PASSWORD (Admin)
+   ============================================================== */
+export const resetDonorPassword = async (req, res) => {
+  try {
+    const donor = await Donor.findById(req.params.id);
+    if (!donor) return res.status(404).json({ success: false, message: "Không tìm thấy người hiến máu" });
+
+    // Tạo mật khẩu mới ngẫu nhiên 10 ký tự (chữ + số)
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    const newPassword = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+
+    // Gán mật khẩu mới (pre-save hook sẽ hash tự động)
+    donor.password = newPassword;
+    await donor.save();
+
+    // Gửi email
+    let emailSent = false;
+    try {
+      await sendDonorPasswordReset({
+        toEmail: donor.email,
+        fullName: donor.fullName,
+        newPassword,
+      });
+      emailSent = true;
+    } catch (emailErr) {
+      console.error("Email send error:", emailErr.message);
+    }
+
+    // Audit log
+    await AuditLog.create({
+      action: "RESET_DONOR_PASSWORD",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "Donor", targetId: donor._id },
+      description: `Đặt lại mật khẩu cho donor ${donor.fullName} (${donor.email})`,
+      ipAddress: req.ip,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: emailSent
+        ? `✅ Đã đặt lại mật khẩu và gửi email đến ${donor.email}`
+        : `✅ Đã đặt lại mật khẩu (lỗi gửi email — kiểm tra cấu hình EMAIL_USER/EMAIL_PASS trong .env)`,
+      emailSent,
+    });
+  } catch (err) {
+    console.error("resetDonorPassword error:", err);
+    res.status(500).json({ success: false, message: "Lỗi đặt lại mật khẩu: " + err.message });
   }
 };
 

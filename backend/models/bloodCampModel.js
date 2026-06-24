@@ -27,6 +27,7 @@ const bloodCampSchema = new mongoose.Schema(
     location: {
       venue:   { type: String, required: [true, "Venue name is required"] },
       address: { type: String },
+      ward:    { type: String },   // phường / xã
       city:    { type: String, required: [true, "City is required"] },
       state:   { type: String },
       coordinates: {

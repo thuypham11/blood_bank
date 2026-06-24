@@ -20,6 +20,7 @@ import {
   createDonor,
   updateDonor,
   deleteDonor,
+  resetDonorPassword,
   // Facility Management
   getAllFacilities,
   createFacility,
@@ -85,6 +86,7 @@ router.post("/donors", protect, createDonor);
 router.get("/donor/:id", protect, getDonorById);
 router.put("/donor/:id", protect, updateDonor);
 router.delete("/donor/:id", protect, requireRole("superadmin"), deleteDonor);
+router.post("/donor/:id/reset-password", protect, requireRole("superadmin"), resetDonorPassword);
 
 // ── Facility Management ───────────────────────────────────────
 router.get("/facilities", protect, getAllFacilities);
