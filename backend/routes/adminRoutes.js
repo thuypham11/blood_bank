@@ -49,6 +49,7 @@ import {
   // Audit Logs & Reports
   getAuditLogs,
   getAdvancedReports,
+  generateBloodConsumptionReport,
   // Notifications
   broadcastNotification,
   getNotificationHistory,
@@ -115,6 +116,7 @@ router.delete("/camps/:id", protect, requireRole("superadmin"), deleteCamp);
 
 // ── Audit Logs & Reports ──────────────────────────────────────
 router.get("/audit-logs", protect, requireRole("superadmin"), getAuditLogs);
+router.get("/reports/blood-consumption", protect, generateBloodConsumptionReport);
 router.get("/reports", protect, getAdvancedReports);
 
 // ── Notifications ─────────────────────────────────────────────

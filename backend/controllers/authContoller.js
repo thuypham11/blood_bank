@@ -3,7 +3,6 @@ import Donor from "../models/donorModel.js";
 import Facility from "../models/facilityModel.js";
 import Admin from "../models/adminModel.js";
 import jwt from "jsonwebtoken";
-import LabStaff from "../models/LabStaff.js";
 
 /**
  * REGISTER (Unified)
@@ -59,8 +58,7 @@ export const login = async (req, res) => {
 		let user =
 			(await Donor.findOne({ email: normalizedEmail }).select("+password")) ||
 			(await Admin.findOne({ email: normalizedEmail }).select("+password")) ||
-			(await Facility.findOne({ email: normalizedEmail }).select("+password")) ||
-			(await LabStaff.findOne({ email: normalizedEmail }).select("+password"));
+			(await Facility.findOne({ email: normalizedEmail }).select("+password"));
 
 		if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -86,19 +84,14 @@ export const login = async (req, res) => {
 			}
 			// The code will now only proceed to create a token and redirect if the status is "approved" (or any other value not 'pending' or 'rejected').
 		}
-		if (user instanceof LabStaff && !user.isActive) {
-			return res.status(403).json({ success: false, message: "Tài khoản nhân viên đã bị khóa" });
-		}
-
 		const authenticatedRole = user instanceof Facility
 			? (user.role || user.facilityType)
-			: user instanceof LabStaff ? "lab_staff" : user.role;
+			: user.role;
 
 		// ✅ Create token
 		const token = jwt.sign({
 			id: user._id,
 			role: authenticatedRole,
-			...(user instanceof LabStaff ? { facilityId: user.facility } : {}),
 		}, process.env.JWT_SECRET, {
 			expiresIn: "7d",
 		});
@@ -113,8 +106,6 @@ export const login = async (req, res) => {
 				{ _id: user._id },
 				{ $set: { lastLogin: new Date(), history: updatedHistory } },
 			);
-		} else if (user instanceof LabStaff) {
-			await LabStaff.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
 		} else if (user.role === "admin" || user.role === "superadmin") {
 			await Admin.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
 		} else {
@@ -126,7 +117,6 @@ export const login = async (req, res) => {
 		if (authenticatedRole === "donor") redirect = "/donor";
 		else if (authenticatedRole === "hospital") redirect = "/hospital";
 		else if (authenticatedRole === "blood-lab") redirect = "/lab";
-		else if (authenticatedRole === "lab_staff") redirect = "/lab-staff";
 		else if (authenticatedRole === "admin" || authenticatedRole === "superadmin") redirect = "/admin";
 
 		res.status(200).json({
@@ -152,8 +142,6 @@ export const getProfile = async (req, res) => {
 			user = await Donor.findById(req.user.id).select("-password");
 		} else if (req.user.role === "admin" || req.user.role === "superadmin") {
 			user = await Admin.findById(req.user.id).select("-password");
-		} else if (req.user.role === "lab_staff") {
-			user = await LabStaff.findById(req.user.id).select("-password");
 		} else {
 			user = await Facility.findById(req.user.id).select("-password");
 		}

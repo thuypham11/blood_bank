@@ -5,6 +5,16 @@ import QRCode from "qrcode";
 import { generateBloodStorageId } from "../services/barcodeService.js";
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const SCREENING_VALUES = ["pending", "negative", "positive"];
+const DEFAULT_UNIT_VOLUME_ML = 450;
+const HANDOVER_LABELS = {
+    requested: "Benh vien gui yeu cau",
+    received: "Trung tam tiep nhan",
+    preparing: "Dang chuan bi mau",
+    packed: "Da dong goi",
+    shipping: "Dang van chuyen",
+    confirmed: "Benh vien xac nhan nhan mau",
+    rejected: "Tu choi yeu cau",
+};
 const labFilter = (labId) => ({
     $or: [{ hospital: labId }, { bloodLab: labId }],
 });
@@ -24,6 +34,18 @@ const calculatesStatusAfterScreening = (screeningResult) => {
     if (values.every((value) => value == "negative")) return "qualified";
 
     return "pending_screening";
+};
+
+const pushTimeline = (request, status, actor, note = "") => {
+    if (request.handoverTimeline?.some((item) => item.status === status)) return;
+
+    request.handoverTimeline.push({
+        status,
+        label: HANDOVER_LABELS[status] || status,
+        date: new Date(),
+        actor,
+        note,
+    });
 };
 
 export const getBloodLabDashboard = async (req, res) => {
@@ -746,9 +768,86 @@ export const issueBloodUnits = async (req, res) => {
             });
         }
 
+        let resolvedHospitalId = hospitalId || null;
+        let resolvedHospitalName = hospitalName || "";
+
+        if (resolvedHospitalId) {
+            const hospital = await Facility.findOne({
+                _id: resolvedHospitalId,
+                facilityType: "hospital",
+                status: "approved",
+            }).select("name");
+
+            if (!hospital) {
+                return res.status(404).json({
+                    success: false,
+                    message: "KhÃ´ng tÃ¬m tháº¥y bá»‡nh viá»‡n nháº­n mÃ¡u",
+                });
+            }
+
+            resolvedHospitalName = hospital.name;
+        } else if (resolvedHospitalName) {
+            const hospital = await Facility.findOne({
+                name: resolvedHospitalName,
+                facilityType: "hospital",
+                status: "approved",
+            }).select("name");
+
+            if (hospital) {
+                resolvedHospitalId = hospital._id;
+                resolvedHospitalName = hospital.name;
+            }
+        }
+
         const workItems = Array.isArray(items) && items.length > 0
             ? items
             : [{ bloodType, requestedVolume, componentType: componentType || "whole_blood" }];
+
+        const normalizedWorkItems = normalizeIssueItems(workItems);
+        let syncedRequest = null;
+
+        if (requestId) {
+            syncedRequest = await BloodRequest.findOne({
+                _id: requestId,
+                ...requestLabFilter(labId),
+            });
+
+            if (!syncedRequest) {
+                return res.status(404).json({
+                    success: false,
+                    message: "KhÃ´ng tÃ¬m tháº¥y yÃªu cáº§u mÃ¡u cáº§n Ä‘á»“ng bá»™",
+                });
+            }
+
+            if (["rejected", "completed"].includes(syncedRequest.status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "YÃªu cáº§u nÃ y Ä‘Ã£ káº¿t thÃºc, khÃ´ng thá»ƒ xuáº¥t kho",
+                });
+            }
+
+            resolvedHospitalId = syncedRequest.hospitalId;
+            if (!resolvedHospitalName && resolvedHospitalId) {
+                const hospital = await Facility.findById(resolvedHospitalId).select("name");
+                resolvedHospitalName = hospital?.name || "";
+            }
+        } else if (resolvedHospitalId && normalizedWorkItems.length === 1) {
+            const item = normalizedWorkItems[0];
+
+            syncedRequest =
+                (await BloodRequest.findOne({
+                    ...requestLabFilter(labId),
+                    hospitalId: resolvedHospitalId,
+                    bloodType: item.bloodType,
+                    status: "accepted",
+                }).sort({ createdAt: 1 })) ||
+                (await BloodRequest.findOne({
+                    ...requestLabFilter(labId),
+                    hospitalId: resolvedHospitalId,
+                    bloodType: item.bloodType,
+                    status: "pending",
+                }).sort({ createdAt: 1 }));
+        }
 
         const issuePlan = await buildIssuePlan({ labId, items: workItems });
 
@@ -772,12 +871,12 @@ export const issueBloodUnits = async (req, res) => {
             {
                 $set: {
                     status: "issued",
-                    issuedTo: hospitalId || hospitalName,
-                    issuedToName: hospitalName || "",
+                    issuedTo: resolvedHospitalId || resolvedHospitalName,
+                    issuedToName: resolvedHospitalName || "",
                     issueReason: reason || "Cấp máu theo yêu cầu",
                     issuedAt: new Date(),
                     issueCode,
-                    issueRequestId: requestId || null,
+                    issueRequestId: syncedRequest?._id || null,
                 },
             }
         );
@@ -800,32 +899,65 @@ export const issueBloodUnits = async (req, res) => {
             ...labFilter(labId),
         });
 
-        await Facility.findByIdAndUpdate(labId, {
-            $push: {
-                history: {
-                    eventType: "Issue",
-                    description: `Issued to ${hospitalName || hospitalId}: ${issuePlan.plan
-                        .map(
-                            (item) =>
-                                `${item.allocatedVolume}ml ${item.bloodType} (${item.componentType})`
-                        )
-                        .join(", ")}`,
-                    date: new Date(),
-                    referenceId: requestId || null,
+        if (syncedRequest) {
+            syncedRequest.status = "accepted";
+            syncedRequest.handoverStatus = "shipping";
+            syncedRequest.processedAt = syncedRequest.processedAt || new Date();
+            syncedRequest.processedBy = labId;
+            syncedRequest.issuedAt = new Date();
+            syncedRequest.issueCode = issueCode;
+            syncedRequest.fulfilledVolume = issuePlan.totalAllocatedVolume;
+            syncedRequest.fulfilledUnits = issuedUnits.length;
+            syncedRequest.fulfilledUnitIds = issuedUnits.map((unit) => unit._id);
+
+            ["received", "preparing", "packed", "shipping"].forEach((status) => {
+                pushTimeline(syncedRequest, status, labId, `Synced from issue ${issueCode}`);
+            });
+
+            await syncedRequest.save();
+        }
+
+        await Promise.all([
+            Facility.findByIdAndUpdate(labId, {
+                $push: {
+                    history: {
+                        eventType: "Issue",
+                        description: `Issued to ${resolvedHospitalName || resolvedHospitalId}: ${issuePlan.plan
+                            .map(
+                                (item) =>
+                                    `${item.allocatedVolume}ml ${item.bloodType} (${item.componentType})`
+                            )
+                            .join(", ")}`,
+                        date: new Date(),
+                        referenceId: syncedRequest?._id || null,
+                    },
                 },
-            },
-        });
+            }),
+            resolvedHospitalId
+                ? Facility.findByIdAndUpdate(resolvedHospitalId, {
+                    $push: {
+                        history: {
+                            eventType: "Stock Update",
+                            description: `Blood shipment ${issueCode} is on the way`,
+                            date: new Date(),
+                            referenceId: syncedRequest?._id || null,
+                        },
+                    },
+                })
+                : Promise.resolve(),
+        ]);
 
         res.json({
             success: true,
             message: "Xuất máu thành công",
             data: {
                 issueCode,
-                hospitalId,
-                hospitalName,
+                hospitalId: resolvedHospitalId,
+                hospitalName: resolvedHospitalName,
                 reason,
                 items: issuePlan.plan,
                 issuedUnits,
+                request: syncedRequest,
             },
         });
     } catch (error) {
@@ -912,19 +1044,39 @@ export const updateBloodRequestStatus = async (req, res) => {
         request.status = nextStatus;
         request.processedAt = new Date();
         request.processedBy = labId;
+        request.handoverStatus = nextStatus === "accepted" ? "received" : "requested";
+
+        pushTimeline(
+            request,
+            nextStatus === "accepted" ? "received" : "rejected",
+            labId,
+            nextStatus === "accepted" ? "Accepted by blood lab" : "Rejected by blood lab"
+        );
 
         await request.save();
 
-        await Facility.findByIdAndUpdate(labId, {
-            $push: {
-                history: {
-                    eventType: "Issue",
-                    description: `${nextStatus === "accepted" ? "Accepted" : "Rejected"} blood request ${request._id}`,
-                    date: new Date(),
-                    referenceId: request._id,
+        await Promise.all([
+            Facility.findByIdAndUpdate(labId, {
+                $push: {
+                    history: {
+                        eventType: "Issue",
+                        description: `${nextStatus === "accepted" ? "Accepted" : "Rejected"} blood request ${request._id}`,
+                        date: new Date(),
+                        referenceId: request._id,
+                    },
                 },
-            },
-        });
+            }),
+            Facility.findByIdAndUpdate(request.hospitalId, {
+                $push: {
+                    history: {
+                        eventType: nextStatus === "accepted" ? "Request Approved" : "Stock Update",
+                        description: `${nextStatus === "accepted" ? "Blood request accepted" : "Blood request rejected"} by lab ${labId}`,
+                        date: new Date(),
+                        referenceId: request._id,
+                    },
+                },
+            }),
+        ]);
 
         res.json({
             success: true,
@@ -954,7 +1106,7 @@ export const updateBloodHandoverStatus = async (req, res) => {
             return res.status(400).json({ success: false, message: "Trạng thái bàn giao không hợp lệ" });
         }
 
-        const request = await BloodRequest.findOne({ _id: id, labId });
+        const request = await BloodRequest.findOne({ _id: id, ...requestLabFilter(labId) });
         if (!request) {
             return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu" });
         }
@@ -963,12 +1115,31 @@ export const updateBloodHandoverStatus = async (req, res) => {
         }
 
         request.handoverStatus = handoverStatus;
-        request.handoverTimeline.push({
-            status: handoverStatus,
-            label: `Blood lab updated handover to ${handoverStatus}`,
-            actor: labId,
-        });
+        pushTimeline(request, handoverStatus, labId, `Blood lab updated handover to ${handoverStatus}`);
         await request.save();
+
+        await Promise.all([
+            Facility.findByIdAndUpdate(labId, {
+                $push: {
+                    history: {
+                        eventType: "Issue",
+                        description: `Updated handover ${handoverStatus} for request ${request._id}`,
+                        date: new Date(),
+                        referenceId: request._id,
+                    },
+                },
+            }),
+            Facility.findByIdAndUpdate(request.hospitalId, {
+                $push: {
+                    history: {
+                        eventType: "Stock Update",
+                        description: `Blood request ${request._id} moved to ${handoverStatus}`,
+                        date: new Date(),
+                        referenceId: request._id,
+                    },
+                },
+            }),
+        ]);
 
         res.json({ success: true, message: "Đã cập nhật trạng thái bàn giao", data: request });
     } catch (error) {
@@ -1008,8 +1179,28 @@ export const getHospitalsForIssue = async (req, res) => {
             .lean();
 
         // Danh sách hospitalId có yêu cầu pending gửi tới lab này
-        const pendingHospitals = await BloodRequest.find({ labId, status: "pending" }).distinct("hospitalId");
-        const pendingSet = new Set(pendingHospitals.map((id) => String(id)));
+        const openRequests = await BloodRequest.find({
+            ...requestLabFilter(labId),
+            status: { $in: ["pending", "accepted"] },
+        })
+            .select("hospitalId bloodType units status handoverStatus createdAt")
+            .sort({ status: 1, createdAt: 1 })
+            .lean();
+
+        const requestsByHospital = openRequests.reduce((acc, request) => {
+            const key = String(request.hospitalId);
+            if (!acc.has(key)) acc.set(key, []);
+            acc.get(key).push({
+                _id: request._id,
+                bloodType: request.bloodType,
+                units: request.units,
+                requestedVolume: Number(request.units || 0) * DEFAULT_UNIT_VOLUME_ML,
+                status: request.status,
+                handoverStatus: request.handoverStatus,
+                createdAt: request.createdAt,
+            });
+            return acc;
+        }, new Map());
 
         const mapped = hospitals.map((h) => ({
             _id: h._id,
@@ -1017,7 +1208,9 @@ export const getHospitalsForIssue = async (req, res) => {
             email: h.email,
             phone: h.phone,
             address: h.address,
-            hasPendingRequest: pendingSet.has(String(h._id)),
+            hasPendingRequest: requestsByHospital.has(String(h._id)),
+            openRequests: requestsByHospital.get(String(h._id)) || [],
+            nextRequest: requestsByHospital.get(String(h._id))?.[0] || null,
         }));
 
         // Sắp xếp: hospital có yêu cầu pending lên trước, rồi theo tên

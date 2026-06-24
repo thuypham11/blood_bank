@@ -84,7 +84,9 @@ const emptyReceiveForm = {
 const emptyIssueForm = {
   bloodType: "",
   requestedVolume: "",
+  hospitalId: "",
   hospitalName: "",
+  requestId: "",
   componentType: "",
   reason: "",
 };
@@ -519,6 +521,32 @@ const BloodStock = () => {
     setIssueCart((current) => current.filter((_, i) => i !== index));
     setIssuePreview(null);
   };
+  const handleIssueHospitalChange = (hospitalId) => {
+    const hospital = hospitalOptions.find((item) => String(item._id) === String(hospitalId));
+    const request = hospital?.nextRequest || null;
+
+    setIssueForm({
+      ...issueForm,
+      hospitalId: hospital?._id || "",
+      hospitalName: hospital?.name || "",
+      requestId: request?._id || "",
+      reason: request
+        ? `Cap mau theo yeu cau ${request._id}`
+        : issueForm.reason,
+    });
+
+    if (request) {
+      setIssueCart([
+        {
+          componentType: "whole_blood",
+          bloodType: request.bloodType,
+          requestedVolume: request.requestedVolume || Number(request.units || 0) * 450,
+        },
+      ]);
+    }
+
+    setIssuePreview(null);
+  };
   const handlePreviewIssueCart = async () => {
     if (!issueForm.hospitalName) {
       alert("Vui lòng chọn bệnh viện nhận máu");
@@ -538,7 +566,9 @@ const BloodStock = () => {
       const { data } = await axios.post(
         `${API_URL}/blood/units/issue/preview`,
         {
+          hospitalId: issueForm.hospitalId,
           hospitalName: issueForm.hospitalName,
+          requestId: issueForm.requestId,
           reason: issueForm.reason || "Cấp máu theo yêu cầu",
           items: issueCart,
         },
@@ -576,7 +606,9 @@ const BloodStock = () => {
     }
 
     const payload = {
+      hospitalId: issueForm.hospitalId,
       hospitalName: issueForm.hospitalName,
+      requestId: issueForm.requestId,
       reason: issueForm.reason || "Cấp máu theo yêu cầu",
       items: issueCart,
     };
@@ -1034,15 +1066,15 @@ const BloodStock = () => {
 
               <select
                 required
-                value={issueForm.hospitalName}
+                value={issueForm.hospitalId}
                 onChange={(e) =>
-                  setIssueForm({ ...issueForm, hospitalName: e.target.value })
+                  handleIssueHospitalChange(e.target.value)
                 }
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
               >
                 <option value="">Chọn bệnh viện trong hệ thống</option>
                 {hospitalOptions.map((hospital) => (
-                  <option key={hospital._id} value={hospital.name}>
+                  <option key={hospital._id} value={hospital._id}>
                     {hospital.name}
                     {hospital.hasPendingRequest ? " (Có yêu cầu)" : ""}
                   </option>
@@ -1054,6 +1086,11 @@ const BloodStock = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Lý do xuất
               </label>
+              {issueForm.requestId && (
+                <p className="mb-2 text-xs text-green-600">
+                  Dang dong bo voi yeu cau {issueForm.requestId}
+                </p>
+              )}
               <input
                 value={issueForm.reason}
                 onChange={(e) =>

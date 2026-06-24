@@ -86,6 +86,9 @@ function App() {
 				<Route path="blood-request-create" element={<HospitalRequestBlood />} />
 				<Route path="blood-request-history" element={<HospitalRequestHistory />} />
 				<Route path="inventory" element={<HospitalBloodStock />} />
+				<Route path="request-blood" element={<HospitalRequestBlood />} />
+				<Route path="request-history" element={<HospitalRequestHistory />} />
+				<Route path="blood-stock" element={<HospitalBloodStock />} />
 				<Route path="donors" element={<DonorDirectory />} />
 			</Route>
 
@@ -101,8 +104,7 @@ function App() {
 				<Route path="inventory" element={<BloodStock />} />
 				{/* <Route path="camps" element={<BloodCamps />} /> */}
 				<Route path="profile" element={<LabProfile />} />
-			{/* <Route path="lab" element={<LabStaffManagement />} />  */}
-				{/* <Route path="requests" element={<LabManageRequests />} /> */}
+				<Route path="requests" element={<LabManageRequests />} />
 				<Route path="donor" element={<BloodLabDonor />} />
 			</Route>
 
