@@ -11,7 +11,49 @@ import {
 	validateProductItems,
 } from "../../utils/bloodProducts";
 
-const emptyVolumes = (items) => Object.fromEntries(items.map((item) => [typeof item === "string" ? item : item.value, ""]));
+const emptyVolumes = (items) =>
+	Object.fromEntries(items.map((item) => [typeof item === "string" ? item : item.value, ""]));
+
+const Field = ({ label, icon, children }) => (
+	<label className="block">
+		<span className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+			<span className="text-red-600">{icon}</span>
+			{label}
+		</span>
+		{children}
+	</label>
+);
+
+const ProductSection = ({ title, subtitle, icon, children }) => (
+	<section className="border border-gray-200 rounded-xl p-4">
+		<div className="mb-4 flex items-center justify-between gap-3">
+			<div>
+				<h2 className="font-semibold text-gray-800 flex items-center gap-2">
+					<span className="text-red-600">{icon}</span>
+					{title}
+				</h2>
+				<p className="text-sm text-gray-500">{subtitle}</p>
+			</div>
+			<span className="text-xs font-medium text-gray-500">ml: tổng bội số 250/350/450 ml</span>
+		</div>
+		{children}
+	</section>
+);
+
+const VolumeInput = ({ label, value, onChange }) => (
+	<label className="block">
+		<span className="text-sm font-medium text-gray-700">{label}</span>
+		<input
+			type="number"
+			min="0"
+			step="50"
+			value={value}
+			onChange={(e) => onChange(e.target.value)}
+			placeholder="0 ml"
+			className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+		/>
+	</label>
+);
 
 const HospitalRequestBlood = () => {
 	const [labs, setLabs] = useState([]);
@@ -35,7 +77,7 @@ const HospitalRequestBlood = () => {
 				setLabs(res.data.labs || []);
 			} catch (err) {
 				console.error("Load blood labs error:", err);
-				toast.error("Khong the tai danh sach ngan hang mau");
+				toast.error("Không thể tải danh sách ngân hàng máu");
 			} finally {
 				setLabsLoading(false);
 			}
@@ -67,12 +109,12 @@ const HospitalRequestBlood = () => {
 		const componentItems = buildComponentItems(form.componentVolumes);
 
 		if (!bloodItems.length && !componentItems.length) {
-			toast.error("Vui long chon it nhat mot nhom mau hoac che pham mau");
+			toast.error("Vui lòng chọn ít nhất một nhóm máu hoặc chế phẩm máu");
 			return;
 		}
 
 		if (!validateProductItems(bloodItems, componentItems)) {
-			toast.error(`So luong phai ghep duoc tu tui ${BAG_VOLUMES.join("/")}ml`);
+			toast.error(`Số lượng phải ghép được từ túi ${BAG_VOLUMES.join("/")}ml`);
 			return;
 		}
 
@@ -90,7 +132,7 @@ const HospitalRequestBlood = () => {
 				{ headers: { Authorization: `Bearer ${token}` } },
 			);
 
-			toast.success("Da gui yeu cau mau");
+			toast.success("Đã gửi yêu cầu máu");
 			setForm({
 				labId: "",
 				requestedDeliveryDate: new Date().toISOString().split("T")[0],
@@ -99,7 +141,7 @@ const HospitalRequestBlood = () => {
 			});
 		} catch (err) {
 			console.error("Request blood error:", err);
-			toast.error(err.response?.data?.message || "Khong the gui yeu cau mau");
+			toast.error(err.response?.data?.message || "Không thể gửi yêu cầu máu");
 		} finally {
 			setLoading(false);
 		}
@@ -113,21 +155,25 @@ const HospitalRequestBlood = () => {
 						<span className="p-2 bg-red-100 rounded-xl">
 							<Droplet className="w-6 h-6 text-red-600" />
 						</span>
-						Yeu cau mau
+						Yêu Cầu Máu
 					</h1>
-					<p className="text-gray-600 mt-2">Chon mau toan phan, che pham mau, hoac ca hai theo don vi ml.</p>
+					<p className="text-gray-600 mt-2">
+						Chọn máu toàn phần, chế phẩm máu, hoặc cả hai theo đơn vị ml.
+					</p>
 				</div>
 
-				<form onSubmit={submitRequest} className="bg-white rounded-2xl shadow-lg border border-red-100 p-6 space-y-6">
+				<form
+					onSubmit={submitRequest}
+					className="bg-white rounded-2xl shadow-lg border border-red-100 p-6 space-y-6">
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-						<Field label="Ngan hang mau" icon={<MapPin size={16} />}>
+						<Field label="Ngân hàng máu" icon={<MapPin size={16} />}>
 							<select
 								value={form.labId}
 								onChange={(e) => setForm((prev) => ({ ...prev, labId: e.target.value }))}
 								className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-red-500"
 								required
 								disabled={labsLoading || labs.length === 0}>
-								<option value="">{labsLoading ? "Dang tai..." : "-- Chon ngan hang mau --"}</option>
+								<option value="">{labsLoading ? "Đang tải..." : "Chọn ngân hàng máu"}</option>
 								{labs.map((lab) => (
 									<option key={lab._id} value={lab._id}>
 										{lab.name} - {lab.address?.city || lab.address?.state || "N/A"}
@@ -135,7 +181,7 @@ const HospitalRequestBlood = () => {
 								))}
 							</select>
 						</Field>
-						<Field label="Ngay can nhan" icon={<CalendarDays size={16} />}>
+						<Field label="Ngày cần nhận" icon={<CalendarDays size={16} />}>
 							<input
 								type="date"
 								value={form.requestedDeliveryDate}
@@ -147,7 +193,7 @@ const HospitalRequestBlood = () => {
 						</Field>
 					</div>
 
-					<ProductSection title="Mau toan phan" subtitle="A, B, O, AB +/-" icon={<Droplet size={18} />}>
+					<ProductSection title="Máu toàn phần" subtitle="A, B, O, AB +/-" icon={<Droplet size={18} />}>
 						<div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 							{BLOOD_TYPES.map((type) => (
 								<VolumeInput
@@ -160,7 +206,10 @@ const HospitalRequestBlood = () => {
 						</div>
 					</ProductSection>
 
-					<ProductSection title="Che pham mau" subtitle="Hong cau, tieu cau, bach cau" icon={<Droplet size={18} />}>
+					<ProductSection
+						title="Chế phẩm máu"
+						subtitle="Hồng cầu, tiểu cầu, huyết tương"
+						icon={<Droplet size={18} />}>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 							{BLOOD_COMPONENTS.map((component) => (
 								<VolumeInput
@@ -178,13 +227,19 @@ const HospitalRequestBlood = () => {
 							type="submit"
 							disabled={loading || labs.length === 0}
 							className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors">
-							{loading ? "Dang gui..." : <><Send size={18} /> Gui yeu cau</>}
+							{loading ? (
+								"Dang gui..."
+							) : (
+								<>
+									<Send size={18} /> Gửi yêu cầu
+								</>
+							)}
 						</button>
 						<button
 							type="button"
 							onClick={resetProducts}
 							className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold">
-							Xoa muc da chon
+							Xóa mục đã chọn
 						</button>
 					</div>
 				</form>
@@ -193,11 +248,13 @@ const HospitalRequestBlood = () => {
 					<div className="mt-8 bg-white rounded-2xl shadow-lg border border-red-100 p-6">
 						<h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
 							<MapPin size={20} className="text-red-600" />
-							Ngan hang mau hien co ({labs.length})
+							Ngân hàng máu hiện có ({labs.length})
 						</h3>
 						<div className="grid gap-3">
 							{labs.map((lab) => (
-								<div key={lab._id} className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 border border-gray-200 rounded-lg">
+								<div
+									key={lab._id}
+									className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 border border-gray-200 rounded-lg">
 									<div>
 										<div className="font-medium text-gray-800">{lab.name}</div>
 										<div className="text-sm text-gray-600 flex items-center gap-1">
@@ -206,8 +263,14 @@ const HospitalRequestBlood = () => {
 										</div>
 									</div>
 									<div className="text-sm text-gray-600 flex flex-wrap gap-4">
-										<span className="flex items-center gap-1"><Clock size={12} />{lab.operatingHours?.open} - {lab.operatingHours?.close}</span>
-										<span className="flex items-center gap-1"><Phone size={12} />{lab.phone}</span>
+										<span className="flex items-center gap-1">
+											<Clock size={12} />
+											{lab.operatingHours?.open} - {lab.operatingHours?.close}
+										</span>
+										<span className="flex items-center gap-1">
+											<Phone size={12} />
+											{lab.phone}
+										</span>
 									</div>
 								</div>
 							))}
@@ -218,46 +281,5 @@ const HospitalRequestBlood = () => {
 		</div>
 	);
 };
-
-const Field = ({ label, icon, children }) => (
-	<label className="block">
-		<span className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-			<span className="text-red-600">{icon}</span>
-			{label}
-		</span>
-		{children}
-	</label>
-);
-
-const ProductSection = ({ title, subtitle, icon, children }) => (
-	<section className="border border-gray-200 rounded-xl p-4">
-		<div className="mb-4 flex items-center justify-between gap-3">
-			<div>
-				<h2 className="font-semibold text-gray-800 flex items-center gap-2">
-					<span className="text-red-600">{icon}</span>
-					{title}
-				</h2>
-				<p className="text-sm text-gray-500">{subtitle}</p>
-			</div>
-			<span className="text-xs font-medium text-gray-500">ml: tong boi so 250/350/450</span>
-		</div>
-		{children}
-	</section>
-);
-
-const VolumeInput = ({ label, value, onChange }) => (
-	<label className="block">
-		<span className="text-sm font-medium text-gray-700">{label}</span>
-		<input
-			type="number"
-			min="0"
-			step="50"
-			value={value}
-			onChange={(e) => onChange(e.target.value)}
-			placeholder="0 ml"
-			className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-		/>
-	</label>
-);
 
 export default HospitalRequestBlood;

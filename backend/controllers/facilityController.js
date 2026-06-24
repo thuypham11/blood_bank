@@ -169,7 +169,7 @@ export const updateProfile = async (req, res) => {
 				await session.abortTransaction();
 				return res.status(400).json({
 					success: false,
-					message: "Password must be at least 6 characters long",
+					message: "Mật khẩu cần ít nhất 6 ký tự",
 				});
 			}
 			const salt = await bcrypt.genSalt(12);
@@ -357,12 +357,12 @@ export const getAllLabs = async (req, res) => {
 							distanceKm !== null
 								? `${distanceKm.toFixed(1)} km${hospitalCoords?.source === "exact" && labCoords?.source === "exact" ? "" : " (uoc tinh theo tinh/thanh)"}`
 								: sameWard
-									? "Cung phuong/xa"
+									? "Cùng phường/xã"
 									: sameCity
-										? "Cung thanh pho"
+										? "Cùng thành phố"
 										: sameState
-											? "Cung tinh/thanh"
-											: "Chua co du lieu vi tri",
+											? "Cùng tỉnh/thành"
+											: "Chưa có dữ liệu vị trí",
 					},
 				};
 			})

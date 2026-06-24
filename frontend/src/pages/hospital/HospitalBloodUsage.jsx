@@ -11,7 +11,8 @@ import {
 	validateProductItems,
 } from "../../utils/bloodProducts";
 
-const emptyVolumes = (items) => Object.fromEntries(items.map((item) => [typeof item === "string" ? item : item.value, ""]));
+const emptyVolumes = (items) =>
+	Object.fromEntries(items.map((item) => [typeof item === "string" ? item : item.value, ""]));
 
 const initialForm = () => ({
 	usageDate: new Date().toISOString().split("T")[0],
@@ -24,6 +25,47 @@ const initialForm = () => ({
 	componentVolumes: emptyVolumes(BLOOD_COMPONENTS),
 	reason: "",
 });
+
+const Field = ({ label, icon, children }) => (
+	<label className="block">
+		<span className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+			<span className="text-red-600">{icon}</span>
+			{label}
+		</span>
+		{children}
+	</label>
+);
+
+const ProductSection = ({ title, subtitle, icon, children }) => (
+	<section className="border border-gray-200 rounded-xl p-4">
+		<div className="mb-4 flex items-center justify-between gap-3">
+			<div>
+				<h2 className="font-semibold text-gray-800 flex items-center gap-2">
+					<span className="text-red-600">{icon}</span>
+					{title}
+				</h2>
+				<p className="text-sm text-gray-500">{subtitle}</p>
+			</div>
+			<span className="text-xs font-medium text-gray-500">ml: tổng bội số 250/350/450</span>
+		</div>
+		{children}
+	</section>
+);
+
+const VolumeInput = ({ label, value, onChange }) => (
+	<label className="block">
+		<span className="text-sm font-medium text-gray-700">{label}</span>
+		<input
+			type="number"
+			min="0"
+			step="50"
+			value={value}
+			onChange={(e) => onChange(e.target.value)}
+			placeholder="0 ml"
+			className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+		/>
+	</label>
+);
 
 const HospitalBloodUsage = () => {
 	const [loading, setLoading] = useState(false);
@@ -49,12 +91,12 @@ const HospitalBloodUsage = () => {
 		const componentItems = buildComponentItems(form.componentVolumes);
 
 		if (!bloodItems.length && !componentItems.length) {
-			toast.error("Vui long chon it nhat mot nhom mau hoac che pham mau");
+			toast.error("Vui lòng chọn ít nhất một nhóm máu hoặc chế phẩm máu");
 			return;
 		}
 
 		if (!validateProductItems(bloodItems, componentItems)) {
-			toast.error(`So luong phai ghep duoc tu tui ${BAG_VOLUMES.join("/")}ml`);
+			toast.error(`Số lượng phải ghép được từ túi ${BAG_VOLUMES.join("/")}ml`);
 			return;
 		}
 
@@ -77,11 +119,11 @@ const HospitalBloodUsage = () => {
 				{ headers: { Authorization: `Bearer ${token}` } },
 			);
 
-			toast.success("Da ghi nhan su dung mau");
+			toast.success("Đã ghi nhận sử dụng máu");
 			setForm(initialForm());
 		} catch (error) {
 			console.error("Blood usage error:", error);
-			toast.error(error.response?.data?.message || "Khong the ghi nhan");
+			toast.error(error.response?.data?.message || "Không thể ghi nhận");
 		} finally {
 			setLoading(false);
 		}
@@ -95,14 +137,18 @@ const HospitalBloodUsage = () => {
 						<span className="p-2 bg-red-100 rounded-xl">
 							<Droplet className="w-6 h-6 text-red-600" />
 						</span>
-						Su dung mau
+						Sử Dụng Máu
 					</h1>
-					<p className="text-gray-600 mt-2">Ghi nhan xuat kho mau toan phan, che pham mau, hoac ca hai.</p>
+					<p className="text-gray-600 mt-2">
+						Ghi nhận sử dụng máu toàn phần, chế phẩm máu, hoặc cả hai khi cứu chữa bệnh nhân.
+					</p>
 				</div>
 
-				<form onSubmit={submitUsage} className="bg-white rounded-2xl shadow-lg border border-red-100 p-6 space-y-6">
+				<form
+					onSubmit={submitUsage}
+					className="bg-white rounded-2xl shadow-lg border border-red-100 p-6 space-y-6">
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-						<Field label="Ngay su dung" icon={<Calendar size={16} />}>
+						<Field label="Ngày sử dụng" icon={<Calendar size={16} />}>
 							<input
 								type="date"
 								value={form.usageDate}
@@ -111,7 +157,7 @@ const HospitalBloodUsage = () => {
 								required
 							/>
 						</Field>
-						<Field label="Thoi gian su dung" icon={<Clock size={16} />}>
+						<Field label="Thời gian sử dụng" icon={<Clock size={16} />}>
 							<input
 								type="time"
 								value={form.usageTime}
@@ -123,49 +169,52 @@ const HospitalBloodUsage = () => {
 					</div>
 
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-						<Field label="Benh nhan can mau" icon={<User size={16} />}>
+						<Field label="Bệnh nhân cần máu" icon={<User size={16} />}>
 							<input
 								type="text"
 								value={form.patientName}
 								onChange={(e) => updateField("patientName", e.target.value)}
 								className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-								placeholder="Ho ten benh nhan"
+								placeholder="Họ tên bệnh nhân"
 								required
 							/>
 						</Field>
-						<Field label="So dien thoai benh nhan" icon={<Phone size={16} />}>
+						<Field label="Số điện thoại bệnh nhân" icon={<Phone size={16} />}>
 							<input
 								type="tel"
 								value={form.patientPhone}
 								onChange={(e) => updateField("patientPhone", e.target.value)}
 								className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-								placeholder="So dien thoai"
+								placeholder="Số điện thoại"
 							/>
 						</Field>
 					</div>
 
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-						<Field label="Than nhan" icon={<User size={16} />}>
+						<Field label="Thân nhân" icon={<User size={16} />}>
 							<input
 								type="text"
 								value={form.relativeName}
 								onChange={(e) => updateField("relativeName", e.target.value)}
 								className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-								placeholder="Ho ten than nhan"
+								placeholder="Họ tên thân nhân"
 							/>
 						</Field>
-						<Field label="So dien thoai than nhan" icon={<Phone size={16} />}>
+						<Field label="Số điện thoại thân nhân" icon={<Phone size={16} />}>
 							<input
 								type="tel"
 								value={form.relativePhone}
 								onChange={(e) => updateField("relativePhone", e.target.value)}
 								className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-								placeholder="So dien thoai"
+								placeholder="Số điện thoại"
 							/>
 						</Field>
 					</div>
 
-					<ProductSection title="Mau toan phan" subtitle="Chon mot hoac nhieu nhom mau" icon={<Droplet size={18} />}>
+					<ProductSection
+						title="Máu toàn phần"
+						subtitle="Chọn một hoặc nhiều nhóm máu"
+						icon={<Droplet size={18} />}>
 						<div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 							{BLOOD_TYPES.map((type) => (
 								<VolumeInput
@@ -178,7 +227,10 @@ const HospitalBloodUsage = () => {
 						</div>
 					</ProductSection>
 
-					<ProductSection title="Che pham mau" subtitle="Hong cau, tieu cau, bach cau" icon={<Droplet size={18} />}>
+					<ProductSection
+						title="Chế phẩm máu"
+						subtitle="Hồng cầu, tiểu cầu, huyết tương"
+						icon={<Droplet size={18} />}>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 							{BLOOD_COMPONENTS.map((component) => (
 								<VolumeInput
@@ -191,12 +243,12 @@ const HospitalBloodUsage = () => {
 						</div>
 					</ProductSection>
 
-					<Field label="Ly do su dung" icon={<FileText size={16} />}>
+					<Field label="Lý do sử dụng" icon={<FileText size={16} />}>
 						<textarea
 							value={form.reason}
 							onChange={(e) => updateField("reason", e.target.value)}
 							className="w-full min-h-28 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-							placeholder="Mo ta ly do truyen mau"
+							placeholder="Mô tả lý do truyền máu"
 							required
 						/>
 					</Field>
@@ -205,53 +257,12 @@ const HospitalBloodUsage = () => {
 						type="submit"
 						disabled={loading}
 						className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white py-3 rounded-xl font-semibold transition-colors">
-						{loading ? "Dang ghi nhan..." : "Hoan tat su dung mau"}
+						{loading ? "Đang ghi nhận..." : "Hoàn tất sử dụng máu"}
 					</button>
 				</form>
 			</div>
 		</div>
 	);
 };
-
-const Field = ({ label, icon, children }) => (
-	<label className="block">
-		<span className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-			<span className="text-red-600">{icon}</span>
-			{label}
-		</span>
-		{children}
-	</label>
-);
-
-const ProductSection = ({ title, subtitle, icon, children }) => (
-	<section className="border border-gray-200 rounded-xl p-4">
-		<div className="mb-4 flex items-center justify-between gap-3">
-			<div>
-				<h2 className="font-semibold text-gray-800 flex items-center gap-2">
-					<span className="text-red-600">{icon}</span>
-					{title}
-				</h2>
-				<p className="text-sm text-gray-500">{subtitle}</p>
-			</div>
-			<span className="text-xs font-medium text-gray-500">ml: tong boi so 250/350/450</span>
-		</div>
-		{children}
-	</section>
-);
-
-const VolumeInput = ({ label, value, onChange }) => (
-	<label className="block">
-		<span className="text-sm font-medium text-gray-700">{label}</span>
-		<input
-			type="number"
-			min="0"
-			step="50"
-			value={value}
-			onChange={(e) => onChange(e.target.value)}
-			placeholder="0 ml"
-			className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-		/>
-	</label>
-);
 
 export default HospitalBloodUsage;

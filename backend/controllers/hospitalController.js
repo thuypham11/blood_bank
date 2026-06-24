@@ -3,11 +3,7 @@ import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import Donor from "../models/donorModel.js";
 import BloodUsage from "../models/bloodUsageModel.js";
-import {
-	BLOOD_TYPES,
-	formatProductItems,
-	normalizeProductItems,
-} from "../utils/bloodProducts.js";
+import { BLOOD_TYPES, formatProductItems, normalizeProductItems } from "../utils/bloodProducts.js";
 
 const HANDOVER_LABELS = {
 	requested: "Bệnh viện gửi yêu cầu",
@@ -396,7 +392,9 @@ const consumeStockLine = async ({ hospitalId, filter, label, quantity }) => {
 
 	const availableUnits = availableStock.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 	if (availableUnits < quantity) {
-		throw new Error(`Khong du ${label} trong kho. Hien co: ${availableUnits}ml, yeu cau: ${quantity}ml.`);
+		throw new Error(
+			`Không đủ ${label} trong kho. Hiện có: ${availableUnits}ml, yêu cầu: ${quantity}ml.`,
+		);
 	}
 
 	let remaining = quantity;
@@ -418,7 +416,7 @@ const consumeProductItems = async ({ hospitalId, bloodItems, componentItems }) =
 		await consumeStockLine({
 			hospitalId,
 			filter: { productType: "whole_blood", bloodGroup: item.bloodType },
-			label: `mau toan phan ${item.bloodType}`,
+			label: `máu toàn phần ${item.bloodType}`,
 			quantity: Number(item.volumeMl || item.units),
 		});
 	}
@@ -427,7 +425,7 @@ const consumeProductItems = async ({ hospitalId, bloodItems, componentItems }) =
 		await consumeStockLine({
 			hospitalId,
 			filter: { productType: "blood_component", componentType: item.componentType },
-			label: `che pham ${item.componentType}`,
+			label: `chế phẩm ${item.componentType}`,
 			quantity: Number(item.volumeMl || item.units),
 		});
 	}
@@ -436,19 +434,22 @@ const consumeProductItems = async ({ hospitalId, bloodItems, componentItems }) =
 export const createBloodUsage = async (req, res) => {
 	try {
 		const hospitalId = req.user._id;
-		const {
-			usageDate,
-			usageTime,
-			patientName,
-			patientPhone,
-			relativeName,
-			relativePhone,
-			reason,
-		} = req.body;
+		const { usageDate, usageTime, patientName, patientPhone, relativeName, relativePhone, reason } =
+			req.body;
 		const { bloodItems, componentItems } = normalizeProductItems(req.body);
-		const quantity = [...bloodItems, ...componentItems].reduce((sum, item) => sum + Number(item.volumeMl || item.units || 0), 0);
+		const quantity = [...bloodItems, ...componentItems].reduce(
+			(sum, item) => sum + Number(item.volumeMl || item.units || 0),
+			0,
+		);
 
-		if (!usageDate || !usageTime || !patientName || (bloodItems.length === 0 && componentItems.length === 0) || !quantity || !reason) {
+		if (
+			!usageDate ||
+			!usageTime ||
+			!patientName ||
+			(bloodItems.length === 0 && componentItems.length === 0) ||
+			!quantity ||
+			!reason
+		) {
 			return res.status(400).json({
 				success: false,
 				message: "Vui lòng cung cấp hạn sử dụng, thời gian, tên bệnh nhân, nhóm máu, đơn vị và lý do",
@@ -482,7 +483,7 @@ export const createBloodUsage = async (req, res) => {
 			$push: {
 				history: {
 					eventType: "Stock Update",
-					description: `Da xuat ${productSummary} de truyen cho benh nhan ${patientName}. Ly do: ${reason}`,
+					description: `Đã sử dụng ${productSummary} để truyền cho bệnh nhân ${patientName}. Lý do: ${reason}`,
 					date: new Date(),
 				},
 			},

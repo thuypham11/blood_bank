@@ -181,7 +181,7 @@ const DonorDirectory = () => {
 								<div className="p-2 bg-red-100 rounded-xl">
 									<Heart className="w-6 h-6 text-red-600" />
 								</div>
-								Danh bạ Người hiến máu
+								Danh Bạ Người Hiến Máu
 							</h1>
 							<p className="text-gray-600 mt-1">
 								Tìm kiếm và liên hệ người hiến máu trong trường hợp khẩn cấp

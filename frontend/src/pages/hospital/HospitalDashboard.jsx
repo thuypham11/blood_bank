@@ -286,7 +286,7 @@ const HospitalDashboard = () => {
 							<Droplet className="w-8 h-8 text-blue-600" />
 							<div>
 								<div className="text-2xl font-bold text-gray-800">{stats.totalUnits}</div>
-								<div className="text-sm text-gray-600">Tổng Đơn Vị Máu</div>
+								<div className="text-sm text-gray-600">Tổng ML Máu</div>
 							</div>
 						</div>
 					</div>
@@ -296,7 +296,7 @@ const HospitalDashboard = () => {
 							<Activity className="w-8 h-8 text-green-600" />
 							<div>
 								<div className="text-2xl font-bold text-green-600">{bloodStock.length}</div>
-								<div className="text-sm text-gray-600">Nhóm Máu</div>
+								<div className="text-sm text-gray-600">Đơn Vị Máu</div>
 							</div>
 						</div>
 					</div>

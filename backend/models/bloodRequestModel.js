@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
-const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells"];
+const BLOOD_COMPONENTS = ["red_cells", "platelets", "plasma"];
 
 const bloodItemSchema = new mongoose.Schema(
 	{
@@ -128,7 +128,10 @@ bloodRequestSchema.pre("validate", function (next) {
 		(sum, item) => sum + Number(item.units || item.volumeMl || 0),
 		0,
 	);
-	this.bloodType = [...bloodItems.map((item) => item.bloodType), ...componentItems.map((item) => item.componentType)].join(", ");
+	this.bloodType = [
+		...bloodItems.map((item) => item.bloodType),
+		...componentItems.map((item) => item.componentType),
+	].join(", ");
 	this.units = totalUnits;
 
 	next();
