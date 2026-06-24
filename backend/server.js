@@ -15,7 +15,6 @@ import mongoose from "mongoose";
 import cors from "cors";
 import http from "http";
 import { initSocketServer } from "./socket/index.js";
-import staffRoutes from './routes/staffRoutes.js';
 // Import routes
 import authRoutes from "./routes/authRoutes.js";
 import donorRoutes from "./routes/donorRoutes.js";
@@ -25,7 +24,7 @@ import bloodLabRoutes from "./routes/bloodLabRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import donationStaffRoutes from './routes/donationStaffRoutes.js';
 import labStaffRoutes from './routes/labStaffRoutes.js';
-
+import staffRoutes from './routes/staffRoutes.js';
 const app = express();
 const server = http.createServer(app);
 
@@ -55,6 +54,7 @@ app.use("/api/blood-lab", bloodLabRoutes);
 app.use("/api/lab-staff", labStaffRoutes);
 app.use("/api/hospital", hospitalRoutes);
 app.use('/api/staff', staffRoutes);
+
 // Database connection
 mongoose.connect(process.env.MONGO_URI)
   .then(async () => {

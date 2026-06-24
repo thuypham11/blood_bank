@@ -7,7 +7,7 @@ import Facility from "../models/facilityModel.js";
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/Blood-bank";
+const MONGO_URI = process.env.MONGO_URI || "mongodb://ThuyPham:Pttf.0511@ac-jgxqewd-shard-00-00.mnqekfu.mongodb.net:27017,ac-jgxqewd-shard-00-01.mnqekfu.mongodb.net:27017,ac-jgxqewd-shard-00-02.mnqekfu.mongodb.net:27017/Blood-bank?ssl=true&replicaSet=atlas-p41wab-shard-0&authSource=admin&retryWrites=true&w=majority";
 
 // Danh sách staff mẫu
 const staffData = [
@@ -16,7 +16,7 @@ const staffData = [
     email: "staff1@bloodbank.com",
     password: "staff123456",
     phone: "0987654321",
-    role: "staff",
+    role: "donation_staff",
     isActive: true,
   },
   {

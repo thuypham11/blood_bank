@@ -16,8 +16,6 @@ import BloodCamps from "./pages/bloodlab/BloodCamps";
 import BloodlabDashboard from "./pages/bloodlab/BloodlabDashboard";
 import BloodStock from "./pages/bloodlab/BloodStock";
 import LabProfile from "./pages/bloodlab/LabProfile";
-import LabStaffManagement from "./pages/bloodlab/LabStaffManagement";
-import LabStaffWorkspace from "./pages/bloodlab/LabStaffWorkspace";
 import GetAllFacilities from "./pages/admin/GetAllFacilities";
 import GetAllDonors from "./pages/admin/GetAllDonors";
 import AdminProfile from "./pages/admin/AdminProfile";
@@ -57,7 +55,7 @@ function App() {
 			<Route path="/login" element={<Login />} />
 			<Route path="/about" element={<About />} />
 			<Route path="/contact" element={<Contact />} />
-
+			<Route path="/staff/login" element={<StaffLogin />} />
 			{/* Donor Routes */}
 			<Route
 				path="/donor"
@@ -103,8 +101,8 @@ function App() {
 				<Route path="inventory" element={<BloodStock />} />
 				{/* <Route path="camps" element={<BloodCamps />} /> */}
 				<Route path="profile" element={<LabProfile />} />
-				<Route path="staff" element={<LabStaffManagement />} />
-				<Route path="requests" element={<LabManageRequests />} />
+			{/* <Route path="lab" element={<LabStaffManagement />} />  */}
+				{/* <Route path="requests" element={<LabManageRequests />} /> */}
 				<Route path="donor" element={<BloodLabDonor />} />
 			</Route>
 
@@ -116,6 +114,7 @@ function App() {
 						<DashboardLayout userRole="admin" />
 					</ProtectedRoute>
 				}>
+					
 				<Route index element={<AdminDashboard />} />
 				<Route path="verification" element={<AdminFacilities />} />
 				<Route path="donors" element={<GetAllDonors />} />
@@ -130,13 +129,28 @@ function App() {
 				<Route path="settings" element={<AdminSettings />} />
 				<Route path="profile" element={<AdminProfile />} />
 			</Route>
-			<Route path="/staff/login" element={<StaffLogin />} />
-			<Route path="/lab-staff" element={<ProtectedRoute><LabStaffWorkspace /></ProtectedRoute>} />
-				<Route path="/staff/dashboard" element={<StaffDashboard />} />
-<Route path="/staff/queue/:sessionId" element={<StaffQueue />} />
+			{/* Staff Routes */}
+      <Route
+        path="/staff"
+        element={
+          <ProtectedRoute allowedRoles={['staff']}>
+            <StaffDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/staff/queue/:sessionId"
+        element={
+          <ProtectedRoute allowedRoles={['staff']}>
+            <StaffQueue />
+          </ProtectedRoute>
+        }
+      />
 			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
 			<Route path="*" element={<LandingPage />} />
 		</Routes>
+
+		
 	);
 }
 

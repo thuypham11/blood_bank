@@ -44,19 +44,7 @@ const componentLabels = {
   plasma: "Huyết tương",
 };
 
-// Danh sách dùng để dựng giao diện; sẽ thay bằng API danh sách bệnh viện ở bước chức năng.
-const hospitalOptions = [
-  "Bệnh viện Chợ Rẫy",
-  "Bệnh viện Bạch Mai",
-  "Bệnh viện Nhân dân 115",
-  "Bệnh viện Đại học Y Dược TP.HCM",
-  "Bệnh viện Việt Đức",
-  "Bệnh viện Trung ương Huế",
-  "Bệnh viện C Đà Nẵng",
-  "Bệnh viện Nhi đồng 1",
-  "Bệnh viện Từ Dũ",
-  "BV Đa khoa Đồng Nai",
-];
+// Hospital options will be fetched from API; prioritized by pending requests
 
 const issueVolumeOptions = [250, 350, 450, 500, 700, 900, 1000, 1500, 2000];
 const pageSizeOptions = [5, 10, 20];
@@ -97,6 +85,7 @@ const emptyIssueForm = {
   bloodType: "",
   requestedVolume: "",
   hospitalName: "",
+  componentType: "",
   reason: "",
 };
 
@@ -187,6 +176,7 @@ const getStatusBadge = (status) => {
 };
 
 const BloodStock = () => {
+  const [expiringUnits, setExpiringUnits] = useState([]);
   const [bloodUnits, setBloodUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -201,6 +191,15 @@ const BloodStock = () => {
   const [issueForm, setIssueForm] = useState(emptyIssueForm);
   const [selectedIssueUnits, setSelectedIssueUnits] = useState([]);
   const [customIssueVolume, setCustomIssueVolume] = useState(false);
+  const [issueDraft, setIssueDraft] = useState({
+    bloodType: "",
+    requestedVolume: "",
+    componentType: "whole_blood",
+  });
+
+  const [issueCart, setIssueCart] = useState([]);
+  const [issuePreview, setIssuePreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [screeningForm, setScreeningForm] = useState(null);
@@ -215,6 +214,7 @@ const BloodStock = () => {
   const [selectedComponents, setSelectedComponents] = useState(
     bloodComponents.map((component) => component.key)
   );
+  const [hospitalOptions, setHospitalOptions] = useState([]);
 
   const summary = useMemo(() => {
     const storageStatuses = new Set([
@@ -274,6 +274,19 @@ const BloodStock = () => {
   const isIssueEnough =
     selectedIssueUnits.length > 0 && totalSelectedVolume >= requestedVolume;
 
+
+
+  const fetchExpiringUnits = async () => {
+    try {
+      const token = getToken();
+      const { data } = await axios.get(`${API_URL}/blood/check-expiry?threshold=3`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (data.success) setExpiringUnits(data.expiringUnits || []);
+    } catch (err) {
+      console.error("Check Blood Expiry Error:", err);
+    }
+  };
   const fetchBloodUnits = async () => {
     try {
       setLoading(true);
@@ -288,6 +301,15 @@ const BloodStock = () => {
 
       const units = data.data || [];
       setBloodUnits(units);
+      // fetch hospitals for issue select
+      try {
+        const { data: hospitalsData } = await axios.get(`${API_URL}/hospitals`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        setHospitalOptions(hospitalsData.hospitals || []);
+      } catch (err) {
+        console.warn("Không thể tải danh sách bệnh viện:", err?.response?.data || err);
+      }
 
 
     } catch (error) {
@@ -300,6 +322,7 @@ const BloodStock = () => {
 
   useEffect(() => {
     fetchBloodUnits();
+    fetchExpiringUnits();
   }, []);
 
   const validateReceiveForm = () => {
@@ -437,49 +460,146 @@ const BloodStock = () => {
   };
 
   const handleAutoSelectUnits = () => {
-    if (!issueForm.bloodType || !requestedVolume) {
-      alert("Vui lòng chọn nhóm máu và nhập số ml cần xuất");
-      setSelectedIssueUnits([]);
+    // Auto-select is now handled on server when issuing multiple items.
+    alert('Tự động chọn đã được dời sang server khi xuất nhiều mục. Vui lòng dùng nút Xác nhận xuất kho.');
+  };
+  const handleAddToIssueCart = () => {
+    if (!issueDraft.componentType) {
+      alert("Vui lòng chọn chế phẩm máu");
       return;
     }
 
-    const matchedUnits = bloodUnits
-      .filter(
-        (unit) =>
-          unit.status === "available" && unit.bloodType === issueForm.bloodType
-      )
-      .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-
-    const selected = [];
-    let total = 0;
-
-    for (const unit of matchedUnits) {
-      if (total >= requestedVolume) break;
-
-      selected.push(unit);
-      total += unit.quantity || 0;
+    if (!issueDraft.bloodType) {
+      alert("Vui lòng chọn nhóm máu");
+      return;
     }
 
-    setSelectedIssueUnits(selected);
-  };
+    if (!issueDraft.requestedVolume || Number(issueDraft.requestedVolume) <= 0) {
+      alert("Vui lòng nhập số ml cần xuất");
+      return;
+    }
 
+    const newItem = {
+      componentType: issueDraft.componentType,
+      bloodType: issueDraft.bloodType,
+      requestedVolume: Number(issueDraft.requestedVolume),
+    };
+
+    setIssueCart((current) => {
+      const existedIndex = current.findIndex(
+        (item) =>
+          item.componentType === newItem.componentType &&
+          item.bloodType === newItem.bloodType
+      );
+
+      if (existedIndex >= 0) {
+        return current.map((item, index) =>
+          index === existedIndex
+            ? {
+              ...item,
+              requestedVolume:
+                Number(item.requestedVolume) + Number(newItem.requestedVolume),
+            }
+            : item
+        );
+      }
+
+      return [...current, newItem];
+    });
+
+    setIssueDraft({
+      bloodType: "",
+      requestedVolume: "",
+      componentType: "whole_blood",
+    });
+
+    setIssuePreview(null);
+  };
+  const handleRemoveFromIssueCart = (index) => {
+    setIssueCart((current) => current.filter((_, i) => i !== index));
+    setIssuePreview(null);
+  };
+  const handlePreviewIssueCart = async () => {
+    if (!issueForm.hospitalName) {
+      alert("Vui lòng chọn bệnh viện nhận máu");
+      return;
+    }
+
+    if (issueCart.length === 0) {
+      alert("Vui lòng thêm ít nhất một dòng vào giỏ xuất");
+      return;
+    }
+
+    try {
+      setPreviewLoading(true);
+
+      const token = getToken();
+
+      const { data } = await axios.post(
+        `${API_URL}/blood/units/issue/preview`,
+        {
+          hospitalName: issueForm.hospitalName,
+          reason: issueForm.reason || "Cấp máu theo yêu cầu",
+          items: issueCart,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setIssuePreview(data.data);
+    } catch (error) {
+      console.error("Preview Issue Error:", error.response?.data || error);
+      alert(error.response?.data?.message || "Không thể kiểm tra tồn kho");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
   const handleIssueBlood = async (e) => {
     e.preventDefault();
 
-    if (!isIssueEnough) return;
+    if (!issueForm.hospitalName) {
+      alert("Vui lòng chọn bệnh viện nhận máu");
+      return;
+    }
+
+    if (issueCart.length === 0) {
+      alert("Vui lòng thêm ít nhất một dòng vào giỏ xuất");
+      return;
+    }
+
+    if (!issuePreview?.canIssue) {
+      alert("Vui lòng kiểm tra tồn kho và đảm bảo đủ máu trước khi xuất");
+      return;
+    }
+
+    const payload = {
+      hospitalName: issueForm.hospitalName,
+      reason: issueForm.reason || "Cấp máu theo yêu cầu",
+      items: issueCart,
+    };
 
     try {
       const token = getToken();
 
-      await axios.patch(`${API_URL}/blood/units/issue`, issueForm, {
+      const { data } = await axios.patch(`${API_URL}/blood/units/issue`, payload, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
+      alert(data.message || "Xuất máu thành công");
+
       setIssueForm(emptyIssueForm);
-      setSelectedIssueUnits([]);
-      setCustomIssueVolume(false);
+      setIssueDraft({
+        bloodType: "",
+        requestedVolume: "",
+        componentType: "whole_blood",
+      });
+      setIssueCart([]);
+      setIssuePreview(null);
 
       await fetchBloodUnits();
     } catch (error) {
@@ -487,7 +607,10 @@ const BloodStock = () => {
       alert(error.response?.data?.message || "Không thể xuất máu");
     }
   };
-
+  const canConfirmIssue =
+    issueForm.hospitalName &&
+    issueCart.length > 0 &&
+    issuePreview?.canIssue;
   const handleToggleComponent = (componentKey) => {
     setSelectedComponents((current) =>
       current.includes(componentKey)
@@ -739,79 +862,176 @@ const BloodStock = () => {
           </h2>
 
           <form onSubmit={handleIssueBlood} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nhóm máu cần xuất
-                </label>
-                <select
-                  required
-                  value={issueForm.bloodType}
-                  onChange={(e) => {
-                    setIssueForm({ ...issueForm, bloodType: e.target.value });
-                    setSelectedIssueUnits([]);
-                  }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  <option value="">Chọn nhóm máu</option>
-                  {bloodTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="space-y-4">
+              <p className="text-sm font-medium text-gray-700">
+                Thêm chế phẩm vào giỏ xuất
+              </p>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Số ml cần xuất
-                </label>
-                <select
-                  required
-                  value={customIssueVolume ? "custom" : issueForm.requestedVolume}
-                  onChange={(e) => {
-                    const isCustom = e.target.value === "custom";
-                    setCustomIssueVolume(isCustom);
-                    setIssueForm({
-                      ...issueForm,
-                      requestedVolume: isCustom ? "" : e.target.value,
-                    });
-                    setSelectedIssueUnits([]);
-                  }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  <option value="">Chọn dung tích cần xuất</option>
-                  {issueVolumeOptions.map((volume) => (
-                    <option key={volume} value={volume}>{volume} ml</option>
-                  ))}
-                  <option value="custom">Nhập dung tích khác...</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Chế phẩm
+                  </label>
+                  <select
+                    value={issueDraft.componentType}
+                    onChange={(e) =>
+                      setIssueDraft({ ...issueDraft, componentType: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="whole_blood">Máu toàn phần</option>
+                    {bloodComponents.map((component) => (
+                      <option key={component.key} value={component.key}>
+                        {component.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                {customIssueVolume && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nhóm máu
+                  </label>
+                  <select
+                    value={issueDraft.bloodType}
+                    onChange={(e) =>
+                      setIssueDraft({ ...issueDraft, bloodType: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="">Chọn nhóm máu</option>
+                    {bloodTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Số ml
+                  </label>
                   <input
-                    required
-                    autoFocus
                     type="number"
                     min="1"
-                    value={issueForm.requestedVolume}
-                    onChange={(e) => {
-                      setIssueForm({
-                        ...issueForm,
-                        requestedVolume: e.target.value,
-                      });
-                      setSelectedIssueUnits([]);
-                    }}
-                    className="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2"
-                    placeholder="Nhập số ml cần xuất"
+                    value={issueDraft.requestedVolume}
+                    onChange={(e) =>
+                      setIssueDraft({ ...issueDraft, requestedVolume: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Ví dụ: 500"
                   />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddToIssueCart}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Thêm vào giỏ
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-700">
+                    Giỏ xuất kho
+                  </p>
+                  <span className="text-xs text-gray-500">
+                    {issueCart.length} dòng
+                  </span>
+                </div>
+
+                {issueCart.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Chưa có chế phẩm nào trong giỏ xuất.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {issueCart.map((item, index) => (
+                      <div
+                        key={`${item.componentType}-${item.bloodType}-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-white border border-gray-200 px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">
+                            {componentLabels[item.componentType]} - Nhóm {item.bloodType}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Số lượng yêu cầu: {item.requestedVolume} ml
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFromIssueCart(index)}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
+
+              <button
+                type="button"
+                onClick={handlePreviewIssueCart}
+                disabled={previewLoading || issueCart.length === 0 || !issueForm.hospitalName}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-red-600 hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+              >
+                {previewLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <SearchCheck className="w-4 h-4" />
+                )}
+                {previewLoading ? "Đang kiểm tra tồn kho..." : "Kiểm tra tồn kho"}
+              </button>
+
+              {issuePreview && (
+                <div
+                  className={`rounded-xl border p-4 text-sm ${issuePreview.canIssue
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                    }`}
+                >
+                  <p className="font-semibold">
+                    {issuePreview.canIssue
+                      ? "Đủ tồn kho để xuất máu"
+                      : "Không đủ tồn kho"}
+                  </p>
+
+                  {!issuePreview.canIssue && issuePreview.missingItems?.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {issuePreview.missingItems.map((item, index) => (
+                        <p key={`${item.componentType}-${item.bloodType}-${index}`}>
+                          Thiếu {item.missingVolume} ml - {componentLabels[item.componentType]} nhóm {item.bloodType}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {issuePreview.canIssue && issuePreview.plan?.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {issuePreview.plan.map((item, index) => (
+                        <p key={`${item.componentType}-${item.bloodType}-${index}`}>
+                          {componentLabels[item.componentType]} nhóm {item.bloodType}: yêu cầu {item.requestedVolume} ml, phân bổ {item.allocatedVolume} ml
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Bệnh viện nhận
               </label>
+
               <select
                 required
                 value={issueForm.hospitalName}
@@ -822,7 +1042,10 @@ const BloodStock = () => {
               >
                 <option value="">Chọn bệnh viện trong hệ thống</option>
                 {hospitalOptions.map((hospital) => (
-                  <option key={hospital} value={hospital}>{hospital}</option>
+                  <option key={hospital._id} value={hospital.name}>
+                    {hospital.name}
+                    {hospital.hasPendingRequest ? " (Có yêu cầu)" : ""}
+                  </option>
                 ))}
               </select>
             </div>
@@ -841,54 +1064,12 @@ const BloodStock = () => {
               />
             </div>
 
-            <button
-              type="button"
-              onClick={handleAutoSelectUnits}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-red-600 hover:bg-red-50"
-            >
-              <SearchCheck className="w-4 h-4" />
-              Tự động chọn túi phù hợp
-            </button>
 
-            {selectedIssueUnits.length > 0 && (
-              <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
-                <div className="flex justify-between gap-4 mb-3">
-                  <p className="font-medium text-gray-800">Túi máu được chọn</p>
-                  <p className="text-sm text-gray-600">
-                    Tổng:{" "}
-                    <span className="font-semibold">
-                      {totalSelectedVolume}ml
-                    </span>{" "}
-                    / {issueForm.requestedVolume}ml
-                  </p>
-                </div>
 
-                {!isIssueEnough && (
-                  <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
-                    <AlertTriangle className="w-4 h-4" />
-                    Kho chưa đủ, còn thiếu{" "}
-                    {Number(issueForm.requestedVolume) - totalSelectedVolume}ml.
-                  </div>
-                )}
 
-                <div className="space-y-2 max-h-44 overflow-y-auto">
-                  {selectedIssueUnits.map((unit) => (
-                    <div
-                      key={unit._id}
-                      className="grid grid-cols-4 gap-2 rounded-lg bg-white border px-3 py-2 text-sm"
-                    >
-                      <span className="font-medium">{unit.unitCode || unit._id}</span>
-                      <span>{unit.bloodType}</span>
-                      <span>{unit.quantity}ml</span>
-                      <span>HSD: {formatDate(unit.expiryDate || unit.expirationDate)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <button
-              disabled={!isIssueEnough}
+              disabled={!canConfirmIssue}
               className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               <Send className="w-4 h-4" />
@@ -1009,213 +1190,227 @@ const BloodStock = () => {
           </div>
         ) : (
           <>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1150px]">
-              <thead>
-                <tr className="bg-gray-50 border-b">
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Mã túi
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    QR
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Nhóm máu
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Dung tích
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Ngày lấy
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Hạn dùng
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Sàng lọc
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Trạng thái
-                  </th>
-                  <th className="text-left p-3 text-sm font-medium text-gray-700">
-                    Thao tác
-                  </th>
-                </tr>
-              </thead>
+            {expiringUnits.length > 0 && (
+              <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-4 text-orange-700">
+                <p>
+                  Có <strong>{expiringUnits.length}</strong> túi máu sắp hết hạn, vui lòng ưu tiên sử dụng.
+                </p>
+                <ul className="mt-2 list-disc list-inside text-sm">
+                  {expiringUnits.map((unit) => (
+                    <li key={unit._id}>
+                      {unit.unitCode || unit.barcode} - Nhóm {unit.bloodType} - Hạn sử dụng: {formatDate(unit.expiryDate)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1150px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Mã túi
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      QR
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Nhóm máu
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Dung tích
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Ngày lấy
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Hạn dùng
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Sàng lọc
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Trạng thái
+                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">
+                      Thao tác
+                    </th>
+                  </tr>
+                </thead>
 
-              <tbody>
-                {paginatedUnits.map((unit) => (
-                  <tr
-                    key={unit._id}
-                    className="border-b hover:bg-gray-50 align-top"
-                  >
-                    <td className="p-3">
-                      <span className="font-semibold text-gray-800">
-                        {unit.barcode || unit.unitCode || unit._id}
-                      </span>
+                <tbody>
+                  {paginatedUnits.map((unit) => (
+                    <tr
+                      key={unit._id}
+                      className="border-b hover:bg-gray-50 align-top"
+                    >
+                      <td className="p-3">
+                        <span className="font-semibold text-gray-800">
+                          {unit.barcode || unit.unitCode || unit._id}
+                        </span>
 
-                      <p className="mt-1 text-xs text-gray-500">
-                        {componentLabels[unit.componentType || "whole_blood"]}
-                      </p>
-
-                      {unit.parentBarcode && (
-                        <p className="mt-1 text-xs text-blue-600">
-                          ParentID: {unit.parentBarcode}
+                        <p className="mt-1 text-xs text-gray-500">
+                          {componentLabels[unit.componentType || "whole_blood"]}
                         </p>
-                      )}
 
-                      {unit.issuedTo && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Đã xuất cho: {unit.issuedTo}
-                        </p>
-                      )}
-                    </td>
+                        {unit.parentBarcode && (
+                          <p className="mt-1 text-xs text-blue-600">
+                            ParentID: {unit.parentBarcode}
+                          </p>
+                        )}
 
-                    <td className="p-3">
-                      <button
-                        type="button"
-                        onClick={() => handleViewBarcode(unit)}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-                      >
-                        <QrCode className="w-4 h-4" />
-                        Xem mã
-                      </button>
-                    </td>
+                        {unit.issuedTo && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Đã xuất cho: {unit.issuedTo}
+                          </p>
+                        )}
+                      </td>
 
-                    <td className="p-3">
-                      <span className="font-bold text-red-600">
-                        {unit.bloodType}
-                      </span>
-                    </td>
-
-                    <td className="p-3 text-gray-700">{unit.quantity} ml</td>
-
-                    <td className="p-3 text-gray-700">
-                      {formatDate(unit.collectionDate || unit.expirationDate)}
-                    </td>
-
-                    <td className="p-3 text-gray-700">
-                      {formatDate(unit.expiryDate || unit.expirationDate)}
-                    </td>
-
-                    <td className="p-3">
-                      <div className="space-y-2 min-w-[150px]">
-                        {screeningFields.map((field) => (
-                          <div
-                            key={field.key}
-                            className="flex items-center justify-between gap-3"
-                          >
-                            <span className="text-sm text-gray-600">
-                              {field.label}
-                            </span>
-                            {getScreeningBadge(
-                              unit.screeningResult?.[field.key]
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-
-                    <td className="p-3">{getStatusBadge(unit.status)}</td>
-
-                    <td className="p-3">
-                      <div className="flex flex-col gap-2">
+                      <td className="p-3">
                         <button
-                          onClick={() => handleOpenScreening(unit)}
-                          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700"
+                          type="button"
+                          onClick={() => handleViewBarcode(unit)}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                         >
-                          <TestTube className="w-4 h-4" />
-                          Sàng lọc
+                          <QrCode className="w-4 h-4" />
+                          Xem mã
                         </button>
+                      </td>
 
-                        {unit.status === "qualified" && (
-                          <button
-                            onClick={() => handleImportToStock(unit._id)}
-                            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700"
-                          >
-                            <PackageCheck className="w-4 h-4" />
-                            Nhập kho
-                          </button>
-                        )}
+                      <td className="p-3">
+                        <span className="font-bold text-red-600">
+                          {unit.bloodType}
+                        </span>
+                      </td>
 
-                        {(unit.status === "qualified" || unit.status === "available") && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setComponentUnit(unit);
-                              setSelectedComponents(
-                                bloodComponents.map((component) => component.key)
-                              );
-                              setComponentDetails(emptyComponentDetails);
-                            }}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
-                          >
-                            <Layers3 className="h-4 w-4" />
-                            Tách chế phẩm
-                          </button>
-                        )}
+                      <td className="p-3 text-gray-700">{unit.quantity} ml</td>
 
-                        {(unit.status === "rejected" ||
-                          unit.status === "pending_screening") && (
-                            <button
-                              onClick={() => handleDiscard(unit._id)}
-                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50"
+                      <td className="p-3 text-gray-700">
+                        {formatDate(unit.collectionDate || unit.expirationDate)}
+                      </td>
+
+                      <td className="p-3 text-gray-700">
+                        {formatDate(unit.expiryDate || unit.expirationDate)}
+                      </td>
+
+                      <td className="p-3">
+                        <div className="space-y-2 min-w-[150px]">
+                          {screeningFields.map((field) => (
+                            <div
+                              key={field.key}
+                              className="flex items-center justify-between gap-3"
                             >
-                              <Trash2 className="w-4 h-4" />
-                              Loại bỏ
+                              <span className="text-sm text-gray-600">
+                                {field.label}
+                              </span>
+                              {getScreeningBadge(
+                                unit.screeningResult?.[field.key]
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+
+                      <td className="p-3">{getStatusBadge(unit.status)}</td>
+
+                      <td className="p-3">
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() => handleOpenScreening(unit)}
+                            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700"
+                          >
+                            <TestTube className="w-4 h-4" />
+                            Sàng lọc
+                          </button>
+
+                          {unit.status === "qualified" && (
+                            <button
+                              onClick={() => handleImportToStock(unit._id)}
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700"
+                            >
+                              <PackageCheck className="w-4 h-4" />
+                              Nhập kho
                             </button>
                           )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-5 flex flex-col gap-4 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span>Hiển thị</span>
-              <select
-                value={pageSize}
-                onChange={(event) => {
-                  setPageSize(Number(event.target.value));
-                  setCurrentPage(1);
-                }}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2"
-              >
-                {pageSizeOptions.map((size) => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
-              <span>đơn vị mỗi trang</span>
-            </div>
 
-            <div className="flex items-center justify-between gap-3 sm:justify-end">
-              <span className="text-sm text-gray-600">
-                Trang {currentPage}/{totalPages} · {filteredUnits.length} kết quả
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                  disabled={currentPage === 1}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          {(unit.status === "qualified" || unit.status === "available") && (unit.componentType === "whole_blood" || !unit.componentType) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setComponentUnit(unit);
+                                setSelectedComponents(
+                                  bloodComponents.map((component) => component.key)
+                                );
+                                setComponentDetails(emptyComponentDetails);
+                              }}
+                              className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                            >
+                              <Layers3 className="h-4 w-4" />
+                              Tách chế phẩm
+                            </button>
+                          )}
+
+                          {(unit.status === "rejected" ||
+                            unit.status === "pending_screening") && (
+                              <button
+                                onClick={() => handleDiscard(unit._id)}
+                                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                Loại bỏ
+                              </button>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-5 flex flex-col gap-4 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>Hiển thị</span>
+                <select
+                  value={pageSize}
+                  onChange={(event) => {
+                    setPageSize(Number(event.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2"
                 >
-                  <ChevronLeft className="h-4 w-4" />
-                  Trước
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                  disabled={currentPage === totalPages}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Sau
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+                  {pageSizeOptions.map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+                <span>đơn vị mỗi trang</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 sm:justify-end">
+                <span className="text-sm text-gray-600">
+                  Trang {currentPage}/{totalPages} · {filteredUnits.length} kết quả
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Trước
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage === totalPages}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Sau
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
           </>
         )}
       </div>
@@ -1378,9 +1573,8 @@ const BloodStock = () => {
                   return (
                     <div
                       key={component.key}
-                      className={`rounded-xl border p-4 transition ${
-                        checked ? component.color : "border-gray-200 bg-white text-gray-500"
-                      }`}
+                      className={`rounded-xl border p-4 transition ${checked ? component.color : "border-gray-200 bg-white text-gray-500"
+                        }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <TestTube className="h-6 w-6" />

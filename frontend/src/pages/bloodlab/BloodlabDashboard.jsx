@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
+
 const API_URL = "http://localhost:5000/api/blood-lab"; // day la dia chi backend cua blood lab
 
 const BloodLabDashboard = () => {
@@ -30,6 +31,7 @@ const BloodLabDashboard = () => {
 	const [lab, setLab] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
+
 
 	const fetchDashboardData = async () => { // lấy dữ liệu từ backend
 		try {
@@ -42,8 +44,8 @@ const BloodLabDashboard = () => {
 
 			const [dashboardRes, stockRes, profileRes] = await Promise.all([ // thực hiện 3 request song song để lấy dữ liệu dashboard, tồn kho máu và thông tin phòng xét nghiệm
 				axios
-					.get(`${API_URL}/dashboard`, { 
-						headers: { Authorization: `Bearer ${token}` }, 
+					.get(`${API_URL}/dashboard`, {
+						headers: { Authorization: `Bearer ${token}` },
 					})
 					.catch((err) => {
 						throw err;
@@ -98,22 +100,22 @@ const BloodLabDashboard = () => {
 	};
 	const handleRefresh = async () => { // làm mới dữ liệu trên bảng điều khiển
 		setRefreshing(true); // bật trạng thái làm mới
-		// await fetchDashboardData(); // gọi lại hàm fetchDashboardData để lấy dữ liệu mới nhất từ backend
-		setRefreshing(false);
+		await fetchDashboardData(); // gọi lại hàm fetchDashboardData để lấy dữ liệu mới nhất từ backend
+		setRefreshing(false); // tắt trạng thái làm mới sau khi dữ liệu đã được cập nhật
 		toast.success("Đã cập nhật bảng điều khiển");
 	};
 
-	useEffect(() => {
-		const loadData = async () => {
-			setLoading(true);
+	useEffect(() => { // khi component được mount, gọi hàm fetchDashboardData để lấy dữ liệu ban đầu cho bảng điều khiển
+		const loadData = async () => { // tạo một hàm bất đồng bộ để tải dữ liệu
+			setLoading(true); // bật trạng thái loading trước khi bắt đầu tải dữ liệu
 			await fetchDashboardData();
 			setLoading(false);
 		};
-		loadData();
+		loadData(); // gọi hàm loadData để bắt đầu quá trình tải dữ liệu khi component được render lần đầu tiên
 	}, []);
 
-	if (loading) {
-		return (
+	if (loading) { // nếu đang trong trạng thái loading, hiển thị một giao diện đơn giản để thông báo người dùng rằng dữ liệu đang được tải
+		return ( // giao diện loading đơn giản với biểu tượng và thông báo
 			<div className="min-h-screen bg-linear-to-br from-red-50 to-white flex items-center justify-center">
 				<div className="text-center">
 					<div className="animate-pulse mb-4">
@@ -126,12 +128,14 @@ const BloodLabDashboard = () => {
 		);
 	}
 
-	const totalUnits = stock.reduce((sum, blood) => sum + (blood.quantity || 0), 0);
-	const criticalStock = stock.filter((blood) => (blood.quantity || 0) < 10).length;
 
-	const loginHistory = lab?.history?.filter((h) => h.eventType === "Login") || [];
 
-	return (
+	const totalUnits = stock.reduce((sum, blood) => sum + (blood.quantity || 0), 0);  // tính tổng số đơn vị máu bằng cách cộng dồn số lượng của từng nhóm máu trong tồn kho
+	const criticalStock = stock.filter((blood) => (blood.quantity || 0) < 10).length; // đếm số nhóm máu có tồn kho thấp bằng cách lọc các nhóm máu có số lượng nhỏ hơn 10 và lấy độ dài của mảng kết quả
+
+	const loginHistory = lab?.history?.filter((h) => h.eventType === "Login") || []; // lọc lịch sử hoạt động của phòng xét nghiệm để chỉ lấy các sự kiện có loại "Login", nếu không có lịch sử hoặc không có sự kiện nào là "Login", trả về một mảng rỗng
+
+	return (//` giao diện chính của bảng điều khiển phòng xét nghiệm, hiển thị thông tin tổng quan, tồn kho máu, chiến dịch gần đây, lịch sử truy cập và hoạt động của phòng xét nghiệm
 		<div className="min-h-screen bg-linear-to-br from-red-50 to-white p-6">
 			{/* Tiêu đề */}
 			<div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
@@ -148,7 +152,8 @@ const BloodLabDashboard = () => {
 				<button
 					onClick={handleRefresh}
 					disabled={refreshing}
-					className="mt-4 lg:mt-0 flex items-center gap-2 px-4 py-2 bg-white border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
+					className="mt-4 lg:mt-0 flex items-center gap-2 px-4 py-2 bg-white border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+				>
 					<RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
 					{refreshing ? "Đang làm mới..." : "Làm Mới Dữ Liệu"}
 				</button>
@@ -174,9 +179,8 @@ const BloodLabDashboard = () => {
 							Tổng Quan Phòng Xét Nghiệm
 						</h2>
 						<span
-							className={`px-3 py-1 rounded-full text-sm font-medium ${
-								lab.status === "approved" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-							}`}>
+							className={`px-3 py-1 rounded-full text-sm font-medium ${lab.status === "approved" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+								}`}>
 							{lab.status === "approved"
 								? "Đã Duyệt"
 								: lab.status?.charAt(0).toUpperCase() + lab.status?.slice(1)}
@@ -207,14 +211,14 @@ const BloodLabDashboard = () => {
 					icon={<Calendar className="w-6 h-6" />}
 					label="Tổng Chiến Dịch"
 					value={dashboard?.stats?.totalCamps || 0}
-					trend={dashboard?.stats?.campsTrend}
+					trend={dashboard?.stats?.campsTrend} // hiển thị xu hướng tăng giảm của tổng chiến dịch so với tháng trước nếu có dữ liệu
 					color="blue"
 				/>
 				<MetricCard
 					icon={<Users className="w-6 h-6" />}
 					label="Tổng Người Hiến"
 					value={dashboard?.stats?.totalDonors || 0}
-					trend={dashboard?.stats?.donorsTrend}
+					trend={dashboard?.stats?.donorsTrend} // hiển thị xu hướng tăng giảm của tổng người hiến so với tháng trước nếu có dữ liệu
 					color="green"
 				/>
 				<MetricCard
@@ -244,9 +248,9 @@ const BloodLabDashboard = () => {
 							{stock.map((blood) => {
 								const bloodType = blood.bloodGroup || blood.bloodType;
 								const quantity = blood.quantity || 0;
-								return (
+								return ( // hiển thị từng nhóm máu trong tồn kho với thông tin về nhóm máu, số lượng và cảnh báo nếu tồn kho thấp, sử dụng component BloodStockItem để hiển thị thông tin chi tiết của từng nhóm máu
 									<BloodStockItem
-										key={blood._id}
+										key={blood.bloodType || blood.bloodGroup}
 										bloodType={bloodType}
 										quantity={quantity}
 										critical={quantity < 10}
@@ -259,7 +263,7 @@ const BloodLabDashboard = () => {
 					)}
 				</Section>
 
-				{/* Phần chiến dịch gần đây */}
+
 				<Section
 					title="Chiến Dịch Hiến Máu Gần Đây"
 					icon={<Calendar className="w-5 h-5" />}
@@ -321,6 +325,7 @@ const BloodLabDashboard = () => {
 };
 
 // Các component dùng chung
+// MetricCard: hiển thị một thẻ chỉ số với biểu tượng, nhãn, giá trị, phụ đề và xu hướng tăng giảm nếu có dữ liệu
 const MetricCard = ({ icon, label, value, subtitle, trend, color, alert = false }) => {
 	const colorClasses = {
 		blue: { border: "border-l-blue-400", bg: "bg-blue-100", text: "text-blue-600" },
@@ -333,9 +338,8 @@ const MetricCard = ({ icon, label, value, subtitle, trend, color, alert = false 
 
 	return (
 		<div
-			className={`bg-white rounded-xl shadow-lg border-l-4 ${
-				alert ? "border-l-red-400" : colors.border
-			} p-5 relative overflow-hidden`}>
+			className={`bg-white rounded-xl shadow-lg border-l-4 ${alert ? "border-l-red-400" : colors.border
+				} p-5 relative overflow-hidden`}>
 			<div className="flex items-center justify-between">
 				<div>
 					<p className="text-sm font-medium text-gray-600 mb-1">{label}</p>
@@ -345,9 +349,8 @@ const MetricCard = ({ icon, label, value, subtitle, trend, color, alert = false 
 					)}
 				</div>
 				<div
-					className={`p-3 rounded-lg ${
-						alert ? "bg-red-100 text-red-600" : `${colors.bg} ${colors.text}`
-					}`}>
+					className={`p-3 rounded-lg ${alert ? "bg-red-100 text-red-600" : `${colors.bg} ${colors.text}`
+						}`}>
 					{icon}
 				</div>
 			</div>
@@ -412,13 +415,12 @@ const CampCard = ({ camp }) => (
 		</div>
 		<div className="text-right">
 			<span
-				className={`px-3 py-1 rounded-full text-xs font-medium ${
-					camp.status === "Upcoming"
-						? "bg-yellow-100 text-yellow-700"
-						: camp.status === "Completed"
-							? "bg-green-100 text-green-700"
-							: "bg-gray-100 text-gray-600"
-				}`}>
+				className={`px-3 py-1 rounded-full text-xs font-medium ${camp.status === "Upcoming"
+					? "bg-yellow-100 text-yellow-700"
+					: camp.status === "Completed"
+						? "bg-green-100 text-green-700"
+						: "bg-gray-100 text-gray-600"
+					}`}>
 				{camp.status === "Upcoming"
 					? "Sắp Diễn Ra"
 					: camp.status === "Completed"
