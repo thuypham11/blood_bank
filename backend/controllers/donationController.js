@@ -6,21 +6,51 @@ import DonationAppointment from "../models/DonationAppointment.js";
 import QRCode from 'qrcode';
 import DonationSession from '../models/DonationSession.js';
 import HealthDeclaration from '../models/HealthDeclaration.js';
-// Lấy danh sách camps
+// Lấy danh sách camps (dùng cho donor frontend)
 export const getAvailableCamps = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const camps = await BloodCamp.find({ 
-      status: "Upcoming",
-      date: { $gte: today }
-    })
-    .populate("hospital", "name address phone")
-    .sort({ date: 1 });
-    
+    const { status, page = 1, limit = 9, q } = req.query;
+
+    const filter = {};
+
+    // Lọc status: mặc định chỉ Upcoming và Ongoing nếu không truyền
+    if (status && status !== "all") {
+      filter.status = status;
+    } else if (!status) {
+      filter.status = { $in: ["Upcoming", "Ongoing"] };
+    }
+
+    // Tìm kiếm theo tên, địa điểm
+    if (q) {
+      filter.$or = [
+        { title: { $regex: q, $options: "i" } },
+        { "location.venue": { $regex: q, $options: "i" } },
+        { "location.city": { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } },
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [camps, total] = await Promise.all([
+      BloodCamp.find(filter)
+        .populate("hospital", "name address phone email")
+        .sort({ date: 1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      BloodCamp.countDocuments(filter),
+    ]);
+
     res.json({
       success: true,
-      data: { camps }
+      data: {
+        camps,
+        pagination: {
+          total,
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / parseInt(limit)),
+        },
+      },
     });
   } catch (error) {
     console.error("Get camps error:", error);
