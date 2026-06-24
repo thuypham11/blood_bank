@@ -7,6 +7,7 @@ import {
 	BLOOD_TYPES,
 	componentLabel,
 	productLabel,
+<<<<<<< Updated upstream
 } from "../../utils/bloodProducts";
 
 const summarizeStock = (stock, predicate, label) => {
@@ -374,4 +375,307 @@ const HospitalBloodStock = () => {
 	);
 };
 
+=======
+	productTypeLabel,
+} from "../../utils/bloodProducts";
+
+const formatDate = (value) => (value ? new Date(value).toLocaleDateString("vi-VN") : "N/A");
+const getExpiryDate = (item) => item.expiryDate || item.expirationDate;
+const getBloodGroup = (item) => item.bloodGroup || item.bloodType || "N/A";
+
+const getDaysLeft = (expiryDate) => {
+	if (!expiryDate) return Number.POSITIVE_INFINITY;
+	return Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
+};
+
+const getStockStatus = (item) => {
+	const expiryDate = getExpiryDate(item);
+	const daysLeft = getDaysLeft(expiryDate);
+	if (item.status === "used") return { label: "Đã dùng", color: "bg-gray-100 text-gray-700", icon: CheckCircle };
+	if (item.status === "rejected") return { label: "Bị loại", color: "bg-red-100 text-red-800", icon: AlertTriangle };
+	if (item.status === "expired" || daysLeft <= 0)
+		return { label: "Hết hạn", color: "bg-red-100 text-red-800", icon: AlertTriangle };
+	if (daysLeft <= 7)
+		return { label: "Sắp hết hạn", color: "bg-yellow-100 text-yellow-800", icon: AlertTriangle };
+	if (item.status === "pending_testing")
+		return { label: "Chờ xét nghiệm", color: "bg-blue-100 text-blue-800", icon: AlertTriangle };
+	return { label: "Sẵn sàng", color: "bg-green-100 text-green-800", icon: CheckCircle };
+};
+
+const screeningText = (screening = {}) =>
+	["hiv", "hbv", "hcv"]
+		.map((key) => `${key.toUpperCase()}: ${screening[key] || "pending"}`)
+		.join(" | ");
+
+const HospitalBloodStock = () => {
+	const [stock, setStock] = useState([]);
+	const [loading, setLoading] = useState(true);
+
+	const loadStock = async () => {
+		try {
+			setLoading(true);
+			const token = localStorage.getItem("token");
+			const res = await axios.get("http://localhost:5000/api/hospital/blood/stock", {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			setStock(res.data.data || []);
+		} catch (err) {
+			console.error("Load hospital stock error:", err);
+			toast.error("Không thể tải dữ liệu kho máu");
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		loadStock();
+	}, []);
+
+	const { summary, detailedStock, fifoCount } = useMemo(() => {
+		const availableItems = stock.filter(
+			(item) => !["expired", "used", "rejected"].includes(item.status) && Number(item.quantity || 0) > 0,
+		);
+		const fifoIds = new Set(
+			[...availableItems]
+				.sort((a, b) => new Date(getExpiryDate(a) || 8640000000000000) - new Date(getExpiryDate(b) || 8640000000000000))
+				.slice(0, 10)
+				.map((item) => item._id),
+		);
+
+		const whole = BLOOD_TYPES.map((type) => ({
+			key: `whole-${type}`,
+			label: `Máu toàn phần ${type}`,
+			quantity: stock
+				.filter((item) => item.productType !== "blood_component" && getBloodGroup(item) === type)
+				.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+			count: stock.filter((item) => item.productType !== "blood_component" && getBloodGroup(item) === type).length,
+		}));
+
+		const components = BLOOD_COMPONENTS.map((component) => ({
+			key: `component-${component.value}`,
+			label: component.label,
+			quantity: stock
+				.filter((item) => item.productType === "blood_component" && item.componentType === component.value)
+				.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+			count: stock.filter((item) => item.productType === "blood_component" && item.componentType === component.value).length,
+		}));
+
+		const sorted = [...stock].sort((a, b) => {
+			const aActive = ["expired", "used", "rejected"].includes(a.status) ? 1 : 0;
+			const bActive = ["expired", "used", "rejected"].includes(b.status) ? 1 : 0;
+			if (aActive !== bActive) return aActive - bActive;
+			return new Date(getExpiryDate(a) || 8640000000000000) - new Date(getExpiryDate(b) || 8640000000000000);
+		});
+
+		return {
+			summary: {
+				whole,
+				components,
+				totalMl: stock.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+				totalBags: stock.length,
+				expiringSoon: stock.filter((item) => getDaysLeft(getExpiryDate(item)) <= 7 && item.status !== "used").length,
+			},
+			detailedStock: sorted.map((item, index) => ({
+				...item,
+				priorityRank: fifoIds.has(item._id) ? index + 1 : null,
+			})),
+			fifoCount: fifoIds.size,
+		};
+	}, [stock]);
+
+	const StatCard = ({ value, label, color }) => (
+		<div className={`bg-white p-4 rounded-xl shadow-lg border-l-4 ${color}`}>
+			<div className="text-2xl font-bold text-gray-800">{value}</div>
+			<div className="text-sm text-gray-600">{label}</div>
+		</div>
+	);
+
+	const SummaryTile = ({ item }) => (
+		<div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4">
+			<div className="text-sm font-semibold text-gray-700">{item.label}</div>
+			<div className="mt-2 text-2xl font-bold text-red-700">{item.quantity}ml</div>
+			<div className="text-xs text-gray-500">{item.count} túi</div>
+		</div>
+	);
+
+	if (loading) {
+		return (
+			<div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
+				<div className="max-w-7xl mx-auto flex justify-center items-center py-12">
+					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+					<span className="ml-3 text-gray-600">Đang tải kho máu...</span>
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-6">
+			<div className="max-w-7xl mx-auto">
+				<div className="mb-8">
+					<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+						<div>
+							<h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+								<span className="p-2 bg-red-100 rounded-xl">
+									<Droplet className="w-6 h-6 text-red-600" />
+								</span>
+								Kho Máu Của Bệnh Viện
+							</h1>
+							<p className="text-gray-600 mt-1">
+								Theo dõi từng túi máu bằng barcode/QR và ưu tiên dùng túi gần hết hạn trước.
+							</p>
+						</div>
+						<button
+							onClick={loadStock}
+							className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg shadow-md transition-colors">
+							<RefreshCw size={18} />
+							Làm mới
+						</button>
+					</div>
+
+					<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+						<StatCard value={`${summary.totalMl}ml`} label="Tổng tồn kho" color="border-l-red-400" />
+						<StatCard value={summary.totalBags} label="Tổng túi máu" color="border-l-blue-400" />
+						<StatCard value={fifoCount} label="Túi ưu tiên FIFO" color="border-l-green-400" />
+						<StatCard value={summary.expiringSoon} label="Sắp hết hạn" color="border-l-yellow-400" />
+					</div>
+				</div>
+
+				<section className="mb-8">
+					<div className="mb-4">
+						<h2 className="text-xl font-semibold text-gray-800">Tổng ml Máu Toàn Phần</h2>
+						<p className="text-sm text-gray-500">Tổng hợp theo từng nhóm máu.</p>
+					</div>
+					<div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+						{summary.whole.map((item) => (
+							<SummaryTile key={item.key} item={item} />
+						))}
+					</div>
+				</section>
+
+				<section className="mb-8">
+					<div className="mb-4">
+						<h2 className="text-xl font-semibold text-gray-800">Tổng ml Chế Phẩm</h2>
+						<p className="text-sm text-gray-500">Hồng cầu, tiểu cầu và huyết tương.</p>
+					</div>
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+						{summary.components.map((item) => (
+							<SummaryTile key={item.key} item={item} />
+						))}
+					</div>
+				</section>
+
+				<div className="bg-white rounded-2xl shadow-lg border border-red-100 overflow-hidden mt-8">
+					<div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+						<h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+							<Droplet className="w-5 h-5 text-red-600" />
+							Chi Tiết Từng Túi Máu
+						</h2>
+						<button
+							onClick={() => (window.location.href = "/hospital/blood-request-create")}
+							className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
+							<Plus size={18} />
+							Yêu Cầu Máu
+						</button>
+					</div>
+
+					{detailedStock.length === 0 ? (
+						<div className="text-center py-12">
+							<Droplet className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+							<h3 className="text-lg font-medium text-gray-800 mb-2">Chưa có dữ liệu kho máu</h3>
+							<p className="text-gray-600 mb-4">Gửi yêu cầu máu từ ngân hàng máu để bổ sung kho.</p>
+						</div>
+					) : (
+						<div className="overflow-x-auto">
+							<table className="w-max min-w-full">
+								<thead>
+									<tr className="bg-gray-50 border-b">
+										<th className="p-4 text-left font-semibold text-gray-700">Ưu tiên</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Barcode/QR</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Phân loại</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Nhóm/Chế phẩm</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Số lượng</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Ngày nhập</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Hạn dùng</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Xét nghiệm</th>
+										<th className="p-4 text-left font-semibold text-gray-700">Trạng thái</th>
+									</tr>
+								</thead>
+								<tbody>
+									{detailedStock.map((item) => {
+										const expiryDate = getExpiryDate(item);
+										const status = getStockStatus(item);
+										const StatusIcon = status.icon;
+										const daysLeft = getDaysLeft(expiryDate);
+										return (
+											<tr key={item._id} className="border-b hover:bg-gray-50 transition-colors">
+												<td className="p-4">
+													{item.priorityRank ? (
+														<span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 text-xs font-semibold">
+															Ưu tiên {item.priorityRank}
+														</span>
+													) : (
+														<span className="text-xs text-gray-400">-</span>
+													)}
+												</td>
+												<td className="p-4 font-mono text-xs text-gray-700">{item.barcode || item._id}</td>
+												<td className="p-4 text-sm text-gray-700">{productTypeLabel(item)}</td>
+												<td className="p-4">
+													<span className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+														{item.productType === "blood_component"
+															? `${componentLabel(item.componentType)} (${getBloodGroup(item)})`
+															: productLabel(item)}
+													</span>
+												</td>
+												<td className="p-4 font-semibold text-gray-800">{item.quantity || 0}ml</td>
+												<td className="p-4 text-sm text-gray-600">{formatDate(item.collectionDate || item.createdAt)}</td>
+												<td className="p-4 text-sm text-gray-600">
+													<span className="flex items-center gap-2">
+														<Calendar size={16} className="text-gray-400" />
+														{formatDate(expiryDate)}
+														{Number.isFinite(daysLeft) && (
+															<span className="text-xs text-gray-400">({daysLeft} ngày)</span>
+														)}
+													</span>
+												</td>
+												<td className="p-4 text-xs text-gray-600">{screeningText(item.screeningResult)}</td>
+												<td className="p-4">
+													<span
+														className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1 w-fit ${status.color}`}>
+														<StatusIcon size={14} />
+														{status.label}
+													</span>
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+					)}
+				</div>
+
+				<div className="mt-8 bg-white rounded-2xl shadow-lg border border-red-100 p-6">
+					<h3 className="text-lg font-semibold text-gray-800 mb-4">Quy tắc theo dõi hạn sử dụng</h3>
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-gray-700">
+						<div className="flex items-center gap-2">
+							<AlertTriangle size={16} className="text-yellow-600" />
+							Túi gần hết hạn được đánh dấu ưu tiên FIFO.
+						</div>
+						<div className="flex items-center gap-2">
+							<CheckCircle size={16} className="text-green-600" />
+							Khi sử dụng máu, hệ thống tự trừ túi có hạn dùng gần nhất trước.
+						</div>
+						<div className="flex items-center gap-2">
+							<Calendar size={16} className="text-red-600" />
+							Túi quá hạn được tự chuyển sang trạng thái hết hạn.
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+};
+
+>>>>>>> Stashed changes
 export default HospitalBloodStock;

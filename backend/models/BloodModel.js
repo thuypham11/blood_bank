@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells"];
+const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells", "plasma"];
 
 const bloodSchema = new mongoose.Schema(
 	{
@@ -83,10 +83,17 @@ bloodSchema.pre("save", function (next) {
 		this.productType = this.componentType ? "blood_component" : "whole_blood";
 	}
 	if (this.productType === "whole_blood" && !this.bloodGroup && !this.bloodType) {
+<<<<<<< Updated upstream
 		return next(new Error("Nhóm máu là yếu tố cần thiết để dự trữ máu toàn phần."));
 	}
 	if (this.productType === "blood_component" && !this.componentType) {
 		return next(new Error("Loại thành phần máu là bắt buộc đối với kho dự trữ thành phần máu."));
+=======
+		return next(new Error("Bắt buộc nhập nhóm máu"));
+	}
+	if (this.productType === "blood_component" && !this.componentType) {
+		return next(new Error("Bắt buộc nhập loại thành phần"));
+>>>>>>> Stashed changes
 	}
 	if (this.productType === "whole_blood" && !this.bloodType && this.bloodGroup) {
 		this.bloodType = this.bloodGroup;

@@ -88,7 +88,7 @@ export const getProfile = async (req, res) => {
 		if (!facility) {
 			return res.status(404).json({
 				success: false,
-				message: "Facility not found",
+				message: "Không tìm thấy cơ sở y tế nào",
 			});
 		}
 
@@ -100,7 +100,7 @@ export const getProfile = async (req, res) => {
 		console.error("Get Profile Error:", error);
 		res.status(500).json({
 			success: false,
-			message: "Server error while fetching profile",
+			message: "Không thể tải thông tin từ server",
 		});
 	}
 };
@@ -169,7 +169,11 @@ export const updateProfile = async (req, res) => {
 				await session.abortTransaction();
 				return res.status(400).json({
 					success: false,
+<<<<<<< Updated upstream
 					message: "Mật khẩu cần ít nhất 6 ký tự",
+=======
+					message: "Mật khẩu phải ít nhất 6 ký tự",
+>>>>>>> Stashed changes
 				});
 			}
 			const salt = await bcrypt.genSalt(12);
@@ -185,7 +189,7 @@ export const updateProfile = async (req, res) => {
 				$push: {
 					history: {
 						eventType: "Profile Update",
-						description: "Facility profile updated by user",
+						description: "Cơ sở y tế đã cập nhật do người dùng",
 						date: new Date(),
 					},
 				},
@@ -207,11 +211,11 @@ export const updateProfile = async (req, res) => {
 
 		await session.commitTransaction();
 
-		console.log("✅ Facility profile updated successfully:", updatedFacility._id);
+		console.log("✅ Cơ sở y tế được cập nhật thành công", updatedFacility._id);
 
 		res.status(200).json({
 			success: true,
-			message: "Profile updated successfully",
+			message: "Hồ sơ đã được cập nhật thành công",
 			facility: updatedFacility,
 		});
 	} catch (error) {

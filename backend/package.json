@@ -11,7 +11,8 @@
     "start": "nodemon server.js",
     "seed": "node seeders/seedAll.js",
     "seed:team": "node seeders/seedTeamAccounts.js",
-    "seed:hospital-components": "node scripts/seedHospitalComponents.js"
+    "seed:hospital-components": "node scripts/seedHospitalComponents.js",
+    "seed:hospital-145-stock": "node scripts/seedMilitaryHospital145Stock.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

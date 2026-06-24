@@ -48,10 +48,20 @@ export const productLabel = (item) =>
 	item.productType === "blood_component"
 		? componentLabel(item.componentType)
 		: item.bloodGroup || item.bloodType;
+<<<<<<< Updated upstream
 
 export const formatRequestProducts = (request) => {
 	const blood = (request.bloodItems || []).map(
 		(item) => `${item.bloodType}: ${item.volumeMl || item.units}ml`,
+=======
+
+export const productTypeLabel = (item) =>
+	item.productType === "blood_component" ? "Chế phẩm máu" : "Máu toàn phần";
+
+export const formatRequestProducts = (request) => {
+	const blood = (request.bloodItems || []).map(
+		(item) => `Máu toàn phần ${item.bloodType}: ${item.volumeMl || item.units}ml`,
+>>>>>>> Stashed changes
 	);
 	const components = (request.componentItems || []).map(
 		(item) => `${componentLabel(item.componentType)}: ${item.volumeMl || item.units}ml`,

@@ -286,7 +286,11 @@ const HospitalDashboard = () => {
 							<Droplet className="w-8 h-8 text-blue-600" />
 							<div>
 								<div className="text-2xl font-bold text-gray-800">{stats.totalUnits}</div>
+<<<<<<< Updated upstream
 								<div className="text-sm text-gray-600">Tổng ML Máu</div>
+=======
+								<div className="text-sm text-gray-600">Tổng ML Đơn Vị Máu</div>
+>>>>>>> Stashed changes
 							</div>
 						</div>
 					</div>
@@ -296,7 +300,11 @@ const HospitalDashboard = () => {
 							<Activity className="w-8 h-8 text-green-600" />
 							<div>
 								<div className="text-2xl font-bold text-green-600">{bloodStock.length}</div>
+<<<<<<< Updated upstream
 								<div className="text-sm text-gray-600">Đơn Vị Máu</div>
+=======
+								<div className="text-sm text-gray-600">Phân Loại Máu</div>
+>>>>>>> Stashed changes
 							</div>
 						</div>
 					</div>
@@ -345,7 +353,7 @@ const HospitalDashboard = () => {
 								<Droplet className="w-12 h-12 text-gray-400 mx-auto mb-3" />
 								<p className="text-gray-600 mb-4">Chưa có dữ liệu kho máu</p>
 								<button
-									onClick={() => (window.location.href = "/hospital/request-blood")}
+									onClick={() => (window.location.href = "/hospital/blood-request-create")}
 									className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
 									Yêu Cầu Máu
 								</button>
@@ -377,7 +385,7 @@ const HospitalDashboard = () => {
 
 								{bloodStock.length > 6 && (
 									<button
-										onClick={() => (window.location.href = "/hospital/blood-stock")}
+										onClick={() => (window.location.href = "/hospital/inventory")}
 										className="w-full text-center text-red-600 hover:text-red-700 py-2 border border-dashed border-gray-300 rounded-lg">
 										Xem Tất Cả {bloodStock.length} Nhóm Máu
 									</button>

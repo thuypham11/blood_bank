@@ -87,7 +87,11 @@ export const formatProductItems = ({ bloodItems = [], componentItems = [] } = {}
 	);
 	const componentText = componentItems.map(
 		(item) =>
+<<<<<<< Updated upstream
 			`${item.volumeMl || item.units}ml chế phẩm ${COMPONENT_LABELS[item.componentType] || item.componentType}`,
+=======
+			`${item.volumeMl || item.units}ml ${COMPONENT_LABELS[item.componentType] || item.componentType}`,
+>>>>>>> Stashed changes
 	);
 	return [...bloodText, ...componentText].join(", ");
 };

@@ -41,14 +41,13 @@ import Contact from "./components/contact/Contact";
 import DonorDonationHistory from "./pages/donor/DonorDonationHistory";
 import BookDonation from "./pages/donor/BookDonation";
 import MyAppointments from "./pages/donor/MyAppointments";
-import StaffDashboard from './pages/staff/StaffDashboard';
-import StaffQueue from './pages/staff/StaffQueue';
-import StaffLogin from './pages/staff/StaffLogin';
+import StaffDashboard from "./pages/staff/StaffDashboard";
+import StaffQueue from "./pages/staff/StaffQueue";
+import StaffLogin from "./pages/staff/StaffLogin";
 
 function App() {
 	return (
 		<Routes>
-			
 			{/* Public Routes */}
 			<Route path="/" element={<LandingPage />} />
 			<Route path="/register" element={<Register />} />
@@ -73,7 +72,6 @@ function App() {
 				<Route path="test-results" element={<DonorTestResults />} />
 				<Route path="book" element={<BookDonation />} />
 				<Route path="my-appointments" element={<MyAppointments />} />
-				
 			</Route>
 
 			{/* Hospital Routes */}
@@ -133,8 +131,8 @@ function App() {
 				<Route path="profile" element={<AdminProfile />} />
 			</Route>
 			<Route path="/staff/login" element={<StaffLogin />} />
-				<Route path="/staff/dashboard" element={<StaffDashboard />} />
-<Route path="/staff/queue/:sessionId" element={<StaffQueue />} />
+			<Route path="/staff/dashboard" element={<StaffDashboard />} />
+			<Route path="/staff/queue/:sessionId" element={<StaffQueue />} />
 			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
 			<Route path="*" element={<LandingPage />} />
 		</Routes>

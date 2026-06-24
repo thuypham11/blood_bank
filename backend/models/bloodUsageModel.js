@@ -1,7 +1,11 @@
 import mongoose from "mongoose";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+<<<<<<< Updated upstream
 const BLOOD_COMPONENTS = ["red_cells", "platelets", "plasma"];
+=======
+const BLOOD_COMPONENTS = ["red_cells", "platelets", "white_cells", "plasma"];
+>>>>>>> Stashed changes
 
 const bloodItemSchema = new mongoose.Schema(
 	{

@@ -26,7 +26,11 @@ const Field = ({ label, icon, children }) => (
 
 const ProductSection = ({ title, subtitle, icon, children }) => (
 	<section className="border border-gray-200 rounded-xl p-4">
+<<<<<<< Updated upstream
 		<div className="mb-4 flex items-center justify-between gap-3">
+=======
+		<div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+>>>>>>> Stashed changes
 			<div>
 				<h2 className="font-semibold text-gray-800 flex items-center gap-2">
 					<span className="text-red-600">{icon}</span>
@@ -34,7 +38,11 @@ const ProductSection = ({ title, subtitle, icon, children }) => (
 				</h2>
 				<p className="text-sm text-gray-500">{subtitle}</p>
 			</div>
+<<<<<<< Updated upstream
 			<span className="text-xs font-medium text-gray-500">ml: tổng bội số 250/350/450 ml</span>
+=======
+			<span className="text-xs font-medium text-gray-500">ml: tổng từ túi 250/350/450</span>
+>>>>>>> Stashed changes
 		</div>
 		{children}
 	</section>
@@ -109,12 +117,20 @@ const HospitalRequestBlood = () => {
 		const componentItems = buildComponentItems(form.componentVolumes);
 
 		if (!bloodItems.length && !componentItems.length) {
+<<<<<<< Updated upstream
 			toast.error("Vui lòng chọn ít nhất một nhóm máu hoặc chế phẩm máu");
+=======
+			toast.error("Vui lòng chọn ít nhất một loại máu hoặc chế phẩm máu");
+>>>>>>> Stashed changes
 			return;
 		}
 
 		if (!validateProductItems(bloodItems, componentItems)) {
+<<<<<<< Updated upstream
 			toast.error(`Số lượng phải ghép được từ túi ${BAG_VOLUMES.join("/")}ml`);
+=======
+			toast.error(`Số lượng ml phải ghép được từ các túi ${BAG_VOLUMES.join("/")}ml`);
+>>>>>>> Stashed changes
 			return;
 		}
 
@@ -158,7 +174,11 @@ const HospitalRequestBlood = () => {
 						Yêu Cầu Máu
 					</h1>
 					<p className="text-gray-600 mt-2">
+<<<<<<< Updated upstream
 						Chọn máu toàn phần, chế phẩm máu, hoặc cả hai theo đơn vị ml.
+=======
+						Chọn máu toàn phần hoặc chế phẩm hồng cầu, tiểu cầu, huyết tương theo nhu cầu điều trị.
+>>>>>>> Stashed changes
 					</p>
 				</div>
 
@@ -228,7 +248,11 @@ const HospitalRequestBlood = () => {
 							disabled={loading || labs.length === 0}
 							className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors">
 							{loading ? (
+<<<<<<< Updated upstream
 								"Dang gui..."
+=======
+								"Đang gửi..."
+>>>>>>> Stashed changes
 							) : (
 								<>
 									<Send size={18} /> Gửi yêu cầu
@@ -239,7 +263,11 @@ const HospitalRequestBlood = () => {
 							type="button"
 							onClick={resetProducts}
 							className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold">
+<<<<<<< Updated upstream
 							Xóa mục đã chọn
+=======
+							Làm mới
+>>>>>>> Stashed changes
 						</button>
 					</div>
 				</form>
@@ -248,7 +276,11 @@ const HospitalRequestBlood = () => {
 					<div className="mt-8 bg-white rounded-2xl shadow-lg border border-red-100 p-6">
 						<h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
 							<MapPin size={20} className="text-red-600" />
+<<<<<<< Updated upstream
 							Ngân hàng máu hiện có ({labs.length})
+=======
+							Ngân Hàng Máu Hiện Có ({labs.length})
+>>>>>>> Stashed changes
 						</h3>
 						<div className="grid gap-3">
 							{labs.map((lab) => (

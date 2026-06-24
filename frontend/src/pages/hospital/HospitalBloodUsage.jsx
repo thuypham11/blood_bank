@@ -38,7 +38,11 @@ const Field = ({ label, icon, children }) => (
 
 const ProductSection = ({ title, subtitle, icon, children }) => (
 	<section className="border border-gray-200 rounded-xl p-4">
+<<<<<<< Updated upstream
 		<div className="mb-4 flex items-center justify-between gap-3">
+=======
+		<div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+>>>>>>> Stashed changes
 			<div>
 				<h2 className="font-semibold text-gray-800 flex items-center gap-2">
 					<span className="text-red-600">{icon}</span>
@@ -46,7 +50,11 @@ const ProductSection = ({ title, subtitle, icon, children }) => (
 				</h2>
 				<p className="text-sm text-gray-500">{subtitle}</p>
 			</div>
+<<<<<<< Updated upstream
 			<span className="text-xs font-medium text-gray-500">ml: tổng bội số 250/350/450</span>
+=======
+			<span className="text-xs font-medium text-gray-500">ml: tổng từ túi 250/350/450</span>
+>>>>>>> Stashed changes
 		</div>
 		{children}
 	</section>
@@ -91,12 +99,20 @@ const HospitalBloodUsage = () => {
 		const componentItems = buildComponentItems(form.componentVolumes);
 
 		if (!bloodItems.length && !componentItems.length) {
+<<<<<<< Updated upstream
 			toast.error("Vui lòng chọn ít nhất một nhóm máu hoặc chế phẩm máu");
+=======
+			toast.error("Vui lòng chọn ít nhất một loại máu hoặc chế phẩm máu");
+>>>>>>> Stashed changes
 			return;
 		}
 
 		if (!validateProductItems(bloodItems, componentItems)) {
+<<<<<<< Updated upstream
 			toast.error(`Số lượng phải ghép được từ túi ${BAG_VOLUMES.join("/")}ml`);
+=======
+			toast.error(`Số lượng ml phải ghép được từ các túi ${BAG_VOLUMES.join("/")}ml`);
+>>>>>>> Stashed changes
 			return;
 		}
 
@@ -119,11 +135,19 @@ const HospitalBloodUsage = () => {
 				{ headers: { Authorization: `Bearer ${token}` } },
 			);
 
+<<<<<<< Updated upstream
 			toast.success("Đã ghi nhận sử dụng máu");
 			setForm(initialForm());
 		} catch (error) {
 			console.error("Blood usage error:", error);
 			toast.error(error.response?.data?.message || "Không thể ghi nhận");
+=======
+			toast.success("Đã ghi nhận sử dụng máu theo FIFO");
+			setForm(initialForm());
+		} catch (error) {
+			console.error("Blood usage error:", error);
+			toast.error(error.response?.data?.message || "Không thể ghi nhận sử dụng máu");
+>>>>>>> Stashed changes
 		} finally {
 			setLoading(false);
 		}
@@ -140,7 +164,11 @@ const HospitalBloodUsage = () => {
 						Sử Dụng Máu
 					</h1>
 					<p className="text-gray-600 mt-2">
+<<<<<<< Updated upstream
 						Ghi nhận sử dụng máu toàn phần, chế phẩm máu, hoặc cả hai khi cứu chữa bệnh nhân.
+=======
+						Ghi nhận xuất kho máu toàn phần hoặc hồng cầu, tiểu cầu, huyết tương; hệ thống ưu tiên túi gần hết hạn trước.
+>>>>>>> Stashed changes
 					</p>
 				</div>
 
@@ -169,7 +197,11 @@ const HospitalBloodUsage = () => {
 					</div>
 
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+<<<<<<< Updated upstream
 						<Field label="Bệnh nhân cần máu" icon={<User size={16} />}>
+=======
+						<Field label="Bệnh nhân nhận máu" icon={<User size={16} />}>
+>>>>>>> Stashed changes
 							<input
 								type="text"
 								value={form.patientName}
@@ -211,10 +243,14 @@ const HospitalBloodUsage = () => {
 						</Field>
 					</div>
 
+<<<<<<< Updated upstream
 					<ProductSection
 						title="Máu toàn phần"
 						subtitle="Chọn một hoặc nhiều nhóm máu"
 						icon={<Droplet size={18} />}>
+=======
+					<ProductSection title="Máu toàn phần" subtitle="Chọn một hoặc nhiều nhóm máu" icon={<Droplet size={18} />}>
+>>>>>>> Stashed changes
 						<div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 							{BLOOD_TYPES.map((type) => (
 								<VolumeInput
@@ -227,10 +263,14 @@ const HospitalBloodUsage = () => {
 						</div>
 					</ProductSection>
 
+<<<<<<< Updated upstream
 					<ProductSection
 						title="Chế phẩm máu"
 						subtitle="Hồng cầu, tiểu cầu, huyết tương"
 						icon={<Droplet size={18} />}>
+=======
+					<ProductSection title="Chế phẩm máu" subtitle="Hồng cầu, tiểu cầu, huyết tương" icon={<Droplet size={18} />}>
+>>>>>>> Stashed changes
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 							{BLOOD_COMPONENTS.map((component) => (
 								<VolumeInput

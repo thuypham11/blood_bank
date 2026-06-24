@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
-import { Activity, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Clock } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Clock, Send } from "lucide-react";
 
 const HospitalActivityLog = () => {
 	const [history, setHistory] = useState([]);
@@ -27,25 +27,35 @@ const HospitalActivityLog = () => {
 	}, []);
 
 	const getLogMeta = (description = "") => {
-		const text = description.toLowerCase();
-		if (text.includes("expired")) {
+		const text = description
+			.toLowerCase()
+			.normalize("NFD")
+			.replace(/[\u0300-\u036f]/g, "");
+		if (text.includes("het han") || text.includes("expired")) {
 			return { icon: AlertTriangle, color: "text-red-600 bg-red-50 border-red-100", label: "Hết hạn" };
 		}
-		if (text.includes("exported") || text.includes("transfusion") || text.includes("removed")) {
+		if (text.includes("su dung") || text.includes("xuat") || text.includes("fifo") || text.includes("removed")) {
 			return {
 				icon: ArrowUpFromLine,
 				color: "text-orange-600 bg-orange-50 border-orange-100",
-				label: "Xuất kho",
+				label: "Sử dụng máu",
 			};
 		}
-		if (text.includes("received") || text.includes("added")) {
+		if (text.includes("nhan") || text.includes("received") || text.includes("added")) {
 			return {
 				icon: ArrowDownToLine,
 				color: "text-green-600 bg-green-50 border-green-100",
 				label: "Nhập kho",
 			};
 		}
-		return { icon: Activity, color: "text-blue-600 bg-blue-50 border-blue-100", label: "Hoạt động" };
+		if (text.includes("yeu cau") || text.includes("request")) {
+			return {
+				icon: Send,
+				color: "text-blue-600 bg-blue-50 border-blue-100",
+				label: "Yêu cầu máu",
+			};
+		}
+		return { icon: Activity, color: "text-slate-600 bg-slate-50 border-slate-100", label: "Hoạt động" };
 	};
 
 	return (
@@ -56,10 +66,10 @@ const HospitalActivityLog = () => {
 						<span className="p-2 bg-red-100 rounded-xl">
 							<Activity className="w-6 h-6 text-red-600" />
 						</span>
-						Nhật ký hoạt động bệnh viện
+						Nhật Ký Hoạt Động Bệnh Viện
 					</h1>
 					<p className="text-gray-600 mt-2">
-						Theo dõi nhập kho, xuất kho để truyền máu và các đơn vị máu hết hạn.
+						Theo dõi yêu cầu máu, nhập kho, sử dụng máu theo FIFO và cảnh báo túi hết hạn.
 					</p>
 				</div>
 
@@ -75,14 +85,12 @@ const HospitalActivityLog = () => {
 								const Icon = meta.icon;
 								return (
 									<div key={item._id || index} className="p-4 flex gap-4">
-										<div
-											className={`h-11 w-11 rounded-xl border flex items-center justify-center ${meta.color}`}>
+										<div className={`h-11 w-11 rounded-xl border flex items-center justify-center ${meta.color}`}>
 											<Icon size={20} />
 										</div>
 										<div className="flex-1 min-w-0">
 											<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-												<span
-													className={`w-fit px-2 py-1 rounded-full border text-xs font-semibold ${meta.color}`}>
+												<span className={`w-fit px-2 py-1 rounded-full border text-xs font-semibold ${meta.color}`}>
 													{meta.label}
 												</span>
 												<div className="text-xs text-gray-500 flex items-center gap-1">
