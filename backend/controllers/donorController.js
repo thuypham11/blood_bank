@@ -9,6 +9,7 @@ import path from "path";
 import fs from "fs";
 import { extractIdCardInfo } from "../services/ocrService.js";
 import BloodUnit from "../models/BloodUnit.js";
+import Blood from "../models/BloodModel.js";
 import OTP from '../models/OTP.js';
 import axios from 'axios';
 
@@ -476,15 +477,18 @@ export const getDonorHistory = async (req, res) => {
 // ==================== FOR BLOOD LAB CONTROLLER ====================
 export const searchDonor = async (req, res) => {
   try {
-    const { term } = req.query;
-    if (!term) return res.status(400).json({ success: false, message: "Search term required" });
-    const donors = await Donor.find({
-      $or: [
-        { fullName: { $regex: term, $options: "i" } },
-        { email: { $regex: term, $options: "i" } },
-        { phone: { $regex: term, $options: "i" } },
-      ],
-    })
+    const term = String(req.query.term || "").trim();
+    const filter = term
+      ? {
+          $or: [
+            { fullName: { $regex: term, $options: "i" } },
+            { email: { $regex: term, $options: "i" } },
+            { phone: { $regex: term, $options: "i" } },
+          ],
+        }
+      : {};
+
+    const donors = await Donor.find(filter)
       .select("fullName email phone bloodGroup lastDonationDate donationHistory")
       .limit(20)
       .sort({ lastDonationDate: -1 });
@@ -499,7 +503,17 @@ export const markDonation = async (req, res) => {
   try {
     const donorId = req.params.id;
     const labId = req.user._id;
-    const { quantity = 1, remarks = "", bloodGroup } = req.body;
+    const { remarks = "", bloodGroup } = req.body;
+    const requestedVolume = Number(req.body.volumeMl ?? req.body.quantity ?? 350);
+    const quantity = requestedVolume <= 5 ? requestedVolume * 350 : requestedVolume;
+
+    if (![250, 350, 450, 700].includes(quantity)) {
+      return res.status(400).json({
+        success: false,
+        message: "Dung tích hiến máu chỉ được chọn 250ml, 350ml, 450ml hoặc 700ml.",
+      });
+    }
+
     const donor = await Donor.findById(donorId);
     if (!donor) return res.status(404).json({ success: false, message: "Donor not found" });
     if (donor.lastDonationDate) {
@@ -535,8 +549,8 @@ export const markDonation = async (req, res) => {
       },
     });
     const bloodType = bloodGroup || donor.bloodGroup;
-    await addToBloodStock(labId, bloodType, quantity);
-    res.status(200).json({ success: true, message: "Donation recorded successfully", donor });
+    const bloodUnit = await addToBloodStock(labId, bloodType, quantity);
+    res.status(200).json({ success: true, message: "Donation recorded successfully", donor, bloodUnit });
   } catch (err) {
     console.error("Mark donation error:", err);
     res.status(500).json({ success: false, message: "Server error" });
@@ -545,48 +559,49 @@ export const markDonation = async (req, res) => {
 
 export const getRecentDonations = async (req, res) => {
   try {
-    const labId = req.user._id;
+    const labId = new mongoose.Types.ObjectId(req.user._id);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const [todayDonations, weekDonations, allDonations, recentDonors] = await Promise.all([
-      Donor.countDocuments({
-        "donationHistory.facility": labId,
-        "donationHistory.donationDate": { $gte: today, $lt: tomorrow },
-      }),
-      Donor.countDocuments({
-        "donationHistory.facility": labId,
-        "donationHistory.donationDate": { $gte: weekStart },
-      }),
-      Donor.aggregate([{ $unwind: "$donationHistory" }, { $match: { "donationHistory.facility": labId } }, { $count: "total" }]),
-      Donor.find({ "donationHistory.facility": labId })
-        .select("fullName bloodGroup donationHistory")
-        .sort({ "donationHistory.donationDate": -1 })
-        .limit(10),
+    const matchLab = { "donationHistory.facility": labId };
+    const [todayDonations, weekDonations, allDonations, recentDonations] = await Promise.all([
+      Donor.aggregate([
+        { $unwind: "$donationHistory" },
+        { $match: { ...matchLab, "donationHistory.donationDate": { $gte: today, $lt: tomorrow } } },
+        { $count: "total" },
+      ]),
+      Donor.aggregate([
+        { $unwind: "$donationHistory" },
+        { $match: { ...matchLab, "donationHistory.donationDate": { $gte: weekStart } } },
+        { $count: "total" },
+      ]),
+      Donor.aggregate([{ $unwind: "$donationHistory" }, { $match: matchLab }, { $count: "total" }]),
+      Donor.aggregate([
+        { $unwind: "$donationHistory" },
+        { $match: matchLab },
+        { $sort: { "donationHistory.donationDate": -1 } },
+        { $limit: 10 },
+        {
+          $project: {
+            _id: 0,
+            donorName: "$fullName",
+            bloodGroup: "$donationHistory.bloodGroup",
+            quantity: "$donationHistory.quantity",
+            date: "$donationHistory.donationDate",
+            remarks: "$donationHistory.remarks",
+          },
+        },
+      ]),
     ]);
-    const recentDonations = recentDonors
-      .flatMap((donor) =>
-        donor.donationHistory
-          .filter((d) => d.facility.equals(labId))
-          .slice(0, 3)
-          .map((d) => ({
-            donorName: donor.fullName,
-            bloodGroup: d.bloodGroup,
-            quantity: d.quantity,
-            date: d.donationDate,
-            remarks: d.remarks,
-          }))
-      )
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 10);
+
     res.json({
       success: true,
       stats: {
-        today: todayDonations,
-        thisWeek: weekDonations,
+        today: todayDonations[0]?.total || 0,
+        thisWeek: weekDonations[0]?.total || 0,
         total: allDonations[0]?.total || 0,
       },
       donations: recentDonations,
@@ -600,24 +615,32 @@ export const getRecentDonations = async (req, res) => {
 // Helper for blood stock
 const addToBloodStock = async (labId, bloodType, quantity) => {
   try {
-    const Blood = mongoose.model("Blood");
-    let stock = await Blood.findOne({ bloodGroup: bloodType, bloodLab: labId });
+    const collectionDate = new Date();
     const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 42);
-    if (stock) {
-      stock.quantity += quantity;
-      stock.expiryDate = expiryDate;
-      await stock.save();
-    } else {
-      await Blood.create({
-        bloodGroup: bloodType,
-        quantity,
-        expiryDate,
-        bloodLab: labId,
-      });
-    }
+    expiryDate.setDate(collectionDate.getDate() + 42);
+
+    return await Blood.create({
+      bloodType,
+      bloodGroup: bloodType,
+      quantity,
+      collectionDate,
+      expiryDate,
+      expirationDate: expiryDate,
+      bloodLab: labId,
+      hospital: labId,
+      componentType: "whole_blood",
+      status: "pending_screening",
+      screeningResult: {
+        hiv: "pending",
+        hbv: "pending",
+        hcv: "pending",
+        hepatitis: "pending",
+        syphilis: "pending",
+      },
+    });
   } catch (error) {
     console.error("Error adding to blood stock:", error);
+    throw error;
   }
 };
 export const sendOtp = async (req, res) => {

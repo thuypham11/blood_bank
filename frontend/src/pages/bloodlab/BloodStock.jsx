@@ -89,6 +89,8 @@ const screeningFields = [
 const emptyReceiveForm = {
   bloodType: "",
   volume: "",
+  unitCount: "1",
+  batchCode: "",
   collectionDate: "",
   expiryDate: "",
 };
@@ -198,6 +200,7 @@ const BloodStock = () => {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [receiveForm, setReceiveForm] = useState(emptyReceiveForm);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [issueForm, setIssueForm] = useState(emptyIssueForm);
   const [selectedIssueUnits, setSelectedIssueUnits] = useState([]);
   const [customIssueVolume, setCustomIssueVolume] = useState(false);
@@ -229,6 +232,67 @@ const BloodStock = () => {
       available: bloodUnits.filter((u) => u.status === "available").length,
       issued: bloodUnits.filter((u) => u.status === "issued").length,
     };
+  }, [bloodUnits]);
+
+  const bloodTypeSummary = useMemo(() => {
+    const storageStatuses = new Set([
+      ...pendingStatusValues,
+      "qualified",
+      "available",
+    ]);
+
+    return bloodTypes.map((type) => {
+      const units = bloodUnits.filter(
+        (unit) =>
+          storageStatuses.has(unit.status) &&
+          (unit.bloodType || unit.bloodGroup) === type
+      );
+
+      return {
+        type,
+        units: units.length,
+        volume: units.reduce((sum, unit) => sum + Number(unit.quantity || 0), 0),
+        available: units.filter((unit) => unit.status === "available").length,
+      };
+    });
+  }, [bloodUnits]);
+
+  const batchSummary = useMemo(() => {
+    const batches = new Map();
+
+    bloodUnits
+      .filter((unit) => unit.batchCode)
+      .forEach((unit) => {
+        const batchCode = unit.batchCode;
+        const current = batches.get(batchCode) || {
+          batchCode,
+          bloodType: unit.bloodType || unit.bloodGroup,
+          quantity: unit.quantity || 0,
+          collectionDate: unit.collectionDate,
+          expiryDate: unit.expiryDate || unit.expirationDate,
+          total: 0,
+          available: 0,
+          rejected: 0,
+          discarded: 0,
+          pending: 0,
+          qualified: 0,
+          volume: 0,
+        };
+
+        current.total += 1;
+        current.volume += Number(unit.quantity || 0);
+        if (unit.status === "available") current.available += 1;
+        else if (unit.status === "rejected") current.rejected += 1;
+        else if (unit.status === "discarded") current.discarded += 1;
+        else if (unit.status === "qualified") current.qualified += 1;
+        else if (pendingStatusValues.has(unit.status)) current.pending += 1;
+
+        batches.set(batchCode, current);
+      });
+
+    return Array.from(batches.values()).sort(
+      (first, second) => new Date(second.collectionDate || 0) - new Date(first.collectionDate || 0)
+    );
   }, [bloodUnits]);
 
   const filteredUnits = useMemo(() => {
@@ -634,6 +698,32 @@ const BloodStock = () => {
           <p className="text-2xl font-bold text-purple-600 mt-1">
             {summary.issued}
           </p>
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-red-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Số lượng theo nhóm máu</h2>
+            <p className="text-sm text-gray-500">Tính các túi đang chờ xử lý, đạt sàng lọc và sẵn sàng trong kho.</p>
+          </div>
+          <Droplets className="h-5 w-5 text-red-600" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+          {bloodTypeSummary.map((item) => (
+            <div key={item.type} className="rounded-xl border border-red-100 bg-red-50/40 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-lg font-bold text-red-700">{item.type}</span>
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-gray-600">
+                  {item.available} sẵn sàng
+                </span>
+              </div>
+              <p className="mt-3 text-2xl font-bold text-gray-900">{item.units}</p>
+              <p className="text-xs text-gray-500">túi máu</p>
+              <p className="mt-2 text-sm font-semibold text-gray-700">{item.volume.toLocaleString("vi-VN")} ml</p>
+            </div>
+          ))}
         </div>
       </div>
 

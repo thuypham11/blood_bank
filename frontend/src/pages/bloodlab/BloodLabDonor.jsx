@@ -22,7 +22,7 @@ const BloodLabDonor = () => {
 	const [selectedDonor, setSelectedDonor] = useState(null);
 	const [showDonationForm, setShowDonationForm] = useState(false);
 	const [donationData, setDonationData] = useState({
-		quantity: 1,
+		volumeMl: 350,
 		remarks: "",
 		bloodGroup: "",
 	});
@@ -35,20 +35,15 @@ const BloodLabDonor = () => {
 
 	// Tìm kiếm người hiến máu
 	const searchDonors = async () => {
-		if (!term.trim()) {
-			toast.error("Vui lòng nhập từ khóa tìm kiếm");
-			return;
-		}
-
 		setLoading(true);
 		try {
 			const token = localStorage.getItem("token");
-			const res = await axios.get(`http://localhost:5000/api/blood-lab/donors/search?term=${term}`, {
+			const res = await axios.get(`http://localhost:5000/api/blood-lab/donors/search?term=${encodeURIComponent(term.trim())}`, {
 				headers: { Authorization: `Bearer ${token}` },
 			});
 
 			setResults(res.data.donors || []);
-			if (res.data.donors.length === 0) {
+			if (term.trim() && res.data.donors.length === 0) {
 				toast.error("Không tìm thấy người hiến máu");
 			}
 		} catch (err) {
@@ -74,13 +69,15 @@ const BloodLabDonor = () => {
 	};
 
 	useEffect(() => {
+		searchDonors();
 		loadRecentDonations();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	const openDonationForm = (donor) => {
 		setSelectedDonor(donor);
 		setDonationData({
-			quantity: 1,
+			volumeMl: 350,
 			remarks: "",
 			bloodGroup: donor.bloodGroup,
 		});
@@ -107,24 +104,6 @@ const BloodLabDonor = () => {
 		} catch (err) {
 			console.error("Lỗi ghi nhận hiến máu:", err);
 			toast.error(err.response?.data?.message || "Không thể ghi nhận hiến máu");
-		}
-	};
-
-	// Hiến máu nhanh (1 đơn vị, không ghi chú)
-	const quickDonation = async (donorId) => {
-		try {
-			const token = localStorage.getItem("token");
-			await axios.post(
-				`http://localhost:5000/api/blood-lab/donors/donate/${donorId}`,
-				{ quantity: 1, remarks: "Hiến máu nhanh" },
-				{ headers: { Authorization: `Bearer ${token}` } },
-			);
-
-			toast.success("Đã ghi nhận hiến máu!");
-			searchDonors();
-			loadRecentDonations();
-		} catch (err) {
-			toast.error("Không thể ghi nhận hiến máu");
 		}
 	};
 
@@ -320,7 +299,7 @@ const BloodLabDonor = () => {
 										</div>
 										<div className="text-sm text-gray-600">
 											<div className="flex justify-between">
-												<span>{donation.quantity} đơn vị</span>
+												<span>{donation.quantity} ml</span>
 												<span>{new Date(donation.date).toLocaleDateString("vi-VN")}</span>
 											</div>
 											{donation.remarks && (
@@ -373,15 +352,17 @@ const BloodLabDonor = () => {
 								</div>
 
 								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-1">Số Lượng (Đơn Vị)</label>
-									<input
-										type="number"
-										min="1"
-										max="2"
-										value={donationData.quantity}
-										onChange={(e) => setDonationData({ ...donationData, quantity: parseInt(e.target.value) })}
+									<label className="block text-sm font-medium text-gray-700 mb-1">Dung Tích Túi Máu</label>
+									<select
+										value={donationData.volumeMl}
+										onChange={(e) => setDonationData({ ...donationData, volumeMl: Number(e.target.value) })}
 										className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-									/>
+									>
+										<option value={250}>250 ml</option>
+										<option value={350}>350 ml</option>
+										<option value={450}>450 ml</option>
+										<option value={700}>700 ml</option>
+									</select>
 								</div>
 
 								<div>

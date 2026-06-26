@@ -372,6 +372,113 @@ export const createBloodUnit = async (req, res) => {
     }
 };
 
+export const createBloodBatch = async (req, res) => {
+    try {
+        const labId = req.user._id;
+        const {
+            bloodType,
+            quantity,
+            unitCount,
+            collectionDate,
+            expiryDate,
+            batchCode,
+        } = req.body || {};
+        const allowedQuantities = [250, 350, 450, 700];
+        const count = Number(unitCount);
+        const volume = Number(quantity);
+
+        if (!BLOOD_TYPES.includes(bloodType) || !volume || !collectionDate) {
+            return res.status(400).json({
+                success: false,
+                message: "Vui lòng nhập nhóm máu, dung tích và ngày lấy máu",
+            });
+        }
+
+        if (!allowedQuantities.includes(volume)) {
+            return res.status(400).json({
+                success: false,
+                message: "Dung tích túi máu chỉ được chọn 250ml, 350ml, 450ml hoặc 700ml",
+            });
+        }
+
+        if (!Number.isInteger(count) || count < 1 || count > 500) {
+            return res.status(400).json({
+                success: false,
+                message: "Số lượng túi trong lô phải từ 1 đến 500",
+            });
+        }
+
+        const normalizedBatchCode = String(batchCode || `LO-${bloodType.replace("+", "P").replace("-", "N")}-${Date.now()}`)
+            .trim()
+            .toUpperCase();
+
+        const existingBatch = await Blood.exists({
+            ...labFilter(labId),
+            batchCode: normalizedBatchCode,
+        });
+        if (existingBatch) {
+            return res.status(409).json({
+                success: false,
+                message: "Mã lô đã tồn tại trong kho của trung tâm",
+            });
+        }
+
+        const units = [];
+        for (let index = 0; index < count; index += 1) {
+            const unitCode = await generateBloodStorageId({ facilityId: labId });
+            units.push({
+                unitCode,
+                barcode: unitCode,
+                batchCode: normalizedBatchCode,
+                batchReceivedAt: new Date(),
+                bloodType,
+                bloodGroup: bloodType,
+                quantity: volume,
+                collectionDate,
+                expiryDate,
+                hospital: labId,
+                bloodLab: labId,
+                componentType: "whole_blood",
+                status: "pending_screening",
+                screeningResult: {
+                    hiv: "pending",
+                    hbv: "pending",
+                    hcv: "pending",
+                    hepatitis: "pending",
+                    syphilis: "pending",
+                },
+            });
+        }
+
+        const createdUnits = await Blood.insertMany(units, { ordered: true });
+        await Facility.findByIdAndUpdate(labId, {
+            $push: {
+                history: {
+                    eventType: "Stock Update",
+                    description: `Created blood batch ${normalizedBatchCode} - ${count} units - ${bloodType} - ${volume}ml`,
+                    date: new Date(),
+                },
+            },
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Nhập lô máu thành công",
+            data: {
+                batchCode: normalizedBatchCode,
+                count: createdUnits.length,
+                units: createdUnits,
+            },
+        });
+    } catch (error) {
+        console.error("Create Blood Batch Error", error);
+        res.status(500).json({
+            success: false,
+            message: error.message || "Không thể nhập lô máu",
+        });
+    }
+};
+
 export const updateBloodUnitScreening = async (req, res) => {
     try {
         const labId = req.user._id;
@@ -473,6 +580,71 @@ export const importBloodUnitToStock = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Không thể nhập kho"
+        });
+    }
+};
+
+export const importBloodBatchToStock = async (req, res) => {
+    try {
+        const labId = req.user._id;
+        const batchCode = String(req.params.batchCode || "").trim().toUpperCase();
+
+        if (!batchCode) {
+            return res.status(400).json({ success: false, message: "Mã lô không hợp lệ" });
+        }
+
+        const eligibleStatuses = [
+            "pending_screening",
+            "pending-testing",
+            "pending_testing",
+            "quarantine",
+            "qualified",
+        ];
+
+        const result = await Blood.updateMany(
+            {
+                ...labFilter(labId),
+                batchCode,
+                status: { $in: eligibleStatuses },
+            },
+            {
+                $set: {
+                    status: "available",
+                    screeningResult: {
+                        hiv: "negative",
+                        hbv: "negative",
+                        hcv: "negative",
+                        hepatitis: "negative",
+                        syphilis: "negative",
+                    },
+                },
+            }
+        );
+
+        await Facility.findByIdAndUpdate(labId, {
+            $push: {
+                history: {
+                    eventType: "StockUpdate",
+                    description: `Imported blood batch ${batchCode} to stock - ${result.modifiedCount} units`,
+                    date: new Date(),
+                },
+            },
+        });
+
+        res.json({
+            success: true,
+            message: "Đã chuyển lô máu sang trạng thái sẵn sàng",
+            data: {
+                batchCode,
+                matchedCount: result.matchedCount,
+                modifiedCount: result.modifiedCount,
+            },
+        });
+    } catch (error) {
+        console.error("Import Blood Batch Error", error);
+        res.status(500).json({
+            success: false,
+            message: "Không thể nhập kho theo lô",
         });
     }
 };

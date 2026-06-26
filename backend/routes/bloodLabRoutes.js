@@ -1,6 +1,7 @@
 import express from "express";
 import {
   createBloodUnit,
+  createBloodBatch,
   discardBloodUnit,
   getAllLabs,
   getBloodLabDashboard,
@@ -11,6 +12,7 @@ import {
   getBloodUnits,
   getLabBloodRequests,
   importBloodUnitToStock,
+  importBloodBatchToStock,
   issueBloodUnits,
   splitBloodUnitComponents,
   updateBloodHandoverStatus,
@@ -36,6 +38,7 @@ router.patch("/staff/:id", protectFacility, updateLabStaff);
 
 router.get("/blood/stock", protectFacility, getBloodStock);
 router.get("/blood/units", protectFacility, getBloodUnits);
+router.post("/blood/units/batch", protectFacility, createBloodBatch);
 router.post("/blood/units", protectFacility, createBloodUnit);
 router.get("/blood/units/barcode/:barcode", protectFacility, getBloodUnitByBarcode);
 router.get("/blood/units/:id/code", protectFacility, getBloodUnitCodeImage);
@@ -44,6 +47,7 @@ router.patch("/blood/units/issue", protectFacility, issueBloodUnits);
 router.patch("/blood/units/:id/screening", protectFacility, updateBloodUnitScreening);
 router.patch("/blood/units/:id/import", protectFacility, importBloodUnitToStock);
 router.patch("/blood/units/:id/discard", protectFacility, discardBloodUnit);
+router.patch("/blood/batches/:batchCode/import", protectFacility, importBloodBatchToStock);
 
 router.get("/blood/requests", protectFacility, getLabBloodRequests);
 router.put("/blood/requests/:id", protectFacility, updateBloodRequestStatus);

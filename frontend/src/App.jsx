@@ -16,7 +16,6 @@ import BloodCamps from "./pages/bloodlab/BloodCamps";
 import BloodlabDashboard from "./pages/bloodlab/BloodlabDashboard";
 import BloodStock from "./pages/bloodlab/BloodStock";
 import LabProfile from "./pages/bloodlab/LabProfile";
-import LabStaffManagement from "./pages/bloodlab/LabStaffManagement";
 import LabStaffWorkspace from "./pages/bloodlab/LabStaffWorkspace";
 import GetAllFacilities from "./pages/admin/GetAllFacilities";
 import GetAllDonors from "./pages/admin/GetAllDonors";
@@ -103,7 +102,6 @@ function App() {
 				<Route path="inventory" element={<BloodStock />} />
 				{/* <Route path="camps" element={<BloodCamps />} /> */}
 				<Route path="profile" element={<LabProfile />} />
-				<Route path="staff" element={<LabStaffManagement />} />
 				<Route path="requests" element={<LabManageRequests />} />
 				<Route path="donor" element={<BloodLabDonor />} />
 			</Route>

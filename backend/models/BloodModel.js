@@ -23,6 +23,8 @@ const bloodSchema = new mongoose.Schema(
     bloodGroup: { type: String, enum: BLOOD_TYPES },
 
     quantity: { type: Number, required: true, min: 0 },
+    batchCode: { type: String, trim: true, index: true },
+    batchReceivedAt: Date,
 
     collectionDate: { type: Date, default: Date.now },
     expiryDate: Date,
