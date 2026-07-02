@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { generateBloodStorageId } from "../services/barcodeService.js";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const ABO_TYPES = ["A", "B", "AB", "O"];
 
 const screeningResultSchema = new mongoose.Schema(
   {
@@ -21,17 +22,48 @@ const bloodSchema = new mongoose.Schema(
 
     bloodType: { type: String, enum: BLOOD_TYPES },
     bloodGroup: { type: String, enum: BLOOD_TYPES },
+    aboGroup: { type: String, enum: ABO_TYPES },
+    rhFactor: { type: String, enum: ["positive", "negative"] },
 
     quantity: { type: Number, required: true, min: 0 },
     batchCode: { type: String, trim: true, index: true },
     batchReceivedAt: Date,
+    receivedAt: { type: Date, default: Date.now },
 
     collectionDate: { type: Date, default: Date.now },
     expiryDate: Date,
     expirationDate: Date,
 
+    testSampleCode: { type: String, trim: true, index: true },
+    sampleType: {
+      type: String,
+      enum: ["serum", "plasma", "whole_blood", "unknown"],
+      default: "unknown",
+    },
+    sampleCollectedAt: Date,
+    traceabilityVerified: { type: Boolean, default: true },
+    intakeNote: { type: String, trim: true },
+
     bloodLab: { type: mongoose.Schema.Types.ObjectId, ref: "Facility" },
     hospital: { type: mongoose.Schema.Types.ObjectId, ref: "Facility" },
+
+    donor: { type: mongoose.Schema.Types.ObjectId, ref: "Donor", index: true },
+    donationHistoryId: { type: mongoose.Schema.Types.ObjectId },
+    donationNumber: { type: Number, min: 1 },
+    donorSnapshot: {
+      fullName: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      email: { type: String, trim: true },
+      bloodGroup: { type: String, enum: BLOOD_TYPES },
+    },
+    previousDonation: {
+      bloodUnit: { type: mongoose.Schema.Types.ObjectId, ref: "Blood" },
+      unitCode: { type: String, trim: true },
+      collectionDate: Date,
+      status: String,
+      screeningResult: { type: screeningResultSchema, default: undefined },
+    },
+    intakeWarnings: [{ type: String, trim: true }],
 
     componentType: {
       type: String,
@@ -51,6 +83,7 @@ const bloodSchema = new mongoose.Schema(
         "pending_screening",
         "pending-testing",
         "pending_testing",
+        "testing",
         "qualified",
         "available",
         "issued",
@@ -78,6 +111,10 @@ const bloodSchema = new mongoose.Schema(
 bloodSchema.pre("validate", async function () {
   if (!this.bloodType && this.bloodGroup) this.bloodType = this.bloodGroup;
   if (!this.bloodGroup && this.bloodType) this.bloodGroup = this.bloodType;
+  if (this.bloodType) {
+    this.aboGroup = this.bloodType.replace(/[+-]/g, "");
+    this.rhFactor = this.bloodType.endsWith("+") ? "positive" : "negative";
+  }
 
   if (!this.barcode && this.unitCode) this.barcode = this.unitCode;
   if (!this.unitCode && this.barcode) this.unitCode = this.barcode;
@@ -94,6 +131,14 @@ bloodSchema.pre("validate", async function () {
 
   if (!this.bloodType) {
     this.invalidate("bloodType", "Nhóm máu là bắt buộc");
+  }
+
+  if (!this.sampleCollectedAt && this.collectionDate) {
+    this.sampleCollectedAt = this.collectionDate;
+  }
+
+  if (!this.testSampleCode && (this.unitCode || this.barcode)) {
+    this.testSampleCode = `SMP-${this.unitCode || this.barcode}`;
   }
 
   if (

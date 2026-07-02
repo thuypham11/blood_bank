@@ -491,8 +491,36 @@ export const searchDonor = async (req, res) => {
     const donors = await Donor.find(filter)
       .select("fullName email phone bloodGroup lastDonationDate donationHistory")
       .limit(20)
-      .sort({ lastDonationDate: -1 });
-    res.status(200).json({ success: true, donors });
+      .sort({ lastDonationDate: -1 })
+      .lean();
+    const latestUnits = await Blood.find({ donor: { $in: donors.map((donor) => donor._id) } })
+      .sort({ collectionDate: -1, createdAt: -1 })
+      .select("donor unitCode barcode collectionDate status screeningResult")
+      .lean();
+    const latestByDonor = new Map();
+    latestUnits.forEach((unit) => {
+      const key = String(unit.donor);
+      if (!latestByDonor.has(key)) latestByDonor.set(key, unit);
+    });
+    const enrichedDonors = donors.map((donor) => {
+      const latestBloodUnit = latestByDonor.get(String(donor._id));
+      const intakeWarnings = [];
+      if (latestBloodUnit?.status === "rejected") {
+        intakeWarnings.push("Lần hiến gần nhất không đạt sàng lọc");
+      }
+      if (
+        latestBloodUnit?.screeningResult &&
+        Object.values(latestBloodUnit.screeningResult).includes("positive")
+      ) {
+        intakeWarnings.push("Lần hiến gần nhất có kết quả dương tính");
+      }
+      return {
+        ...donor,
+        latestBloodUnit,
+        intakeWarnings,
+      };
+    });
+    res.status(200).json({ success: true, donors: enrichedDonors });
   } catch (err) {
     console.error("Search donor error:", err);
     res.status(500).json({ success: false, message: "Server error" });
@@ -527,30 +555,68 @@ export const markDonation = async (req, res) => {
         });
       }
     }
-    donor.lastDonationDate = new Date();
+    const bloodType = bloodGroup || donor.bloodGroup;
+    const donationDate = new Date();
+    const donationNumber = (donor.donationHistory?.length || 0) + 1;
+    const previousBloodUnit = await Blood.findOne({ donor: donor._id })
+      .sort({ collectionDate: -1, createdAt: -1 })
+      .select("unitCode barcode collectionDate status screeningResult");
+    const intakeWarnings = [];
+
+    if (previousBloodUnit?.status === "rejected") {
+      intakeWarnings.push("Người hiến có lần hiến trước không đạt sàng lọc");
+    }
+    if (
+      previousBloodUnit?.screeningResult &&
+      Object.values(previousBloodUnit.screeningResult.toObject?.() || previousBloodUnit.screeningResult).includes("positive")
+    ) {
+      intakeWarnings.push("Người hiến có kết quả sàng lọc dương tính ở lần hiến trước");
+    }
+    if (donor.bloodGroup && bloodType && donor.bloodGroup !== bloodType) {
+      intakeWarnings.push(`Nhóm máu lần này (${bloodType}) khác hồ sơ người hiến (${donor.bloodGroup})`);
+    }
+
+    const bloodUnit = await addToBloodStock(labId, bloodType, quantity, {
+      donor,
+      donationNumber,
+      donationDate,
+      previousBloodUnit,
+      intakeWarnings,
+      remarks,
+    });
+
+    donor.lastDonationDate = donationDate;
     if (bloodGroup) donor.bloodGroup = bloodGroup;
     donor.donationHistory.push({
       donationDate: new Date(),
       facility: labId,
-      bloodGroup: bloodGroup || donor.bloodGroup,
+      bloodGroup: bloodType,
       quantity,
       remarks,
       verified: true,
+      bloodUnitId: bloodUnit._id,
     });
+    const donationEntry = donor.donationHistory[donor.donationHistory.length - 1];
+    bloodUnit.donationHistoryId = donationEntry._id;
+    await bloodUnit.save();
     await donor.save();
     await Facility.findByIdAndUpdate(labId, {
       $push: {
         history: {
           eventType: "Donation",
-          description: `Recorded donation from ${donor.fullName} - ${quantity} unit(s) of ${bloodGroup || donor.bloodGroup}`,
+          description: `Recorded donation from ${donor.fullName} - ${quantity}ml of ${bloodType}`,
           date: new Date(),
           referenceId: donor._id,
         },
       },
     });
-    const bloodType = bloodGroup || donor.bloodGroup;
-    const bloodUnit = await addToBloodStock(labId, bloodType, quantity);
-    res.status(200).json({ success: true, message: "Donation recorded successfully", donor, bloodUnit });
+    res.status(200).json({
+      success: true,
+      message: "Donation recorded successfully",
+      donor,
+      bloodUnit,
+      warnings: intakeWarnings,
+    });
   } catch (err) {
     console.error("Mark donation error:", err);
     res.status(500).json({ success: false, message: "Server error" });
@@ -613,21 +679,45 @@ export const getRecentDonations = async (req, res) => {
 };
 
 // Helper for blood stock
-const addToBloodStock = async (labId, bloodType, quantity) => {
+const addToBloodStock = async (labId, bloodType, quantity, context = {}) => {
   try {
     const collectionDate = new Date();
     const expiryDate = new Date();
-    expiryDate.setDate(collectionDate.getDate() + 42);
+    const effectiveCollectionDate = context.donationDate || collectionDate;
+    expiryDate.setTime(effectiveCollectionDate.getTime());
+    expiryDate.setDate(effectiveCollectionDate.getDate() + 42);
+    const { donor, donationNumber, donationDate, previousBloodUnit, intakeWarnings = [], remarks } = context;
 
     return await Blood.create({
       bloodType,
       bloodGroup: bloodType,
       quantity,
-      collectionDate,
+      collectionDate: effectiveCollectionDate,
       expiryDate,
       expirationDate: expiryDate,
       bloodLab: labId,
       hospital: labId,
+      donor: donor?._id,
+      donationNumber,
+      donorSnapshot: donor
+        ? {
+            fullName: donor.fullName,
+            phone: donor.phone,
+            email: donor.email,
+            bloodGroup: bloodType,
+          }
+        : undefined,
+      previousDonation: previousBloodUnit
+        ? {
+            bloodUnit: previousBloodUnit._id,
+            unitCode: previousBloodUnit.unitCode || previousBloodUnit.barcode,
+            collectionDate: previousBloodUnit.collectionDate,
+            status: previousBloodUnit.status,
+            screeningResult: previousBloodUnit.screeningResult,
+          }
+        : undefined,
+      intakeWarnings,
+      intakeNote: remarks,
       componentType: "whole_blood",
       status: "pending_screening",
       screeningResult: {

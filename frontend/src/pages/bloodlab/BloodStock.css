@@ -1,0 +1,73 @@
+@reference "../../index.css";
+
+.blood-stock-panel {
+  @apply rounded-2xl border border-red-100 bg-white p-6 shadow-sm;
+}
+
+.blood-stock-summary-card {
+  @apply rounded-2xl border border-red-100 bg-white p-5;
+}
+
+.blood-stock-card {
+  @apply rounded-xl border border-gray-200 p-4;
+}
+
+.blood-stock-input {
+  @apply w-full rounded-lg border border-gray-300 px-3 py-2;
+}
+
+.blood-stock-input-sm {
+  @apply w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm;
+}
+
+.blood-stock-textarea-mono {
+  @apply w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm;
+}
+
+.blood-stock-primary-button {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:bg-gray-300;
+}
+
+.blood-stock-danger-button {
+  @apply rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700;
+}
+
+.blood-stock-success-button {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300;
+}
+
+.blood-stock-info-button {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400;
+}
+
+.blood-stock-secondary-button {
+  @apply rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-100;
+}
+
+.blood-stock-ghost-button {
+  @apply inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40;
+}
+
+.blood-stock-modal-backdrop {
+  @apply fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4;
+}
+
+.blood-stock-modal-backdrop-strong {
+  @apply fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4;
+}
+
+.blood-stock-modal {
+  @apply overflow-hidden rounded-2xl bg-white shadow-2xl;
+}
+
+.blood-stock-modal-header {
+  @apply flex items-start justify-between border-b px-6 py-4;
+}
+
+.blood-stock-modal-title {
+  @apply border-b px-6 py-4;
+}
+
+.blood-stock-modal-footer {
+  @apply flex justify-end gap-3 border-t bg-gray-50 px-6 py-4;
+}

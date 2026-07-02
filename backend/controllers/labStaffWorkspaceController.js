@@ -4,7 +4,7 @@ import AuditLog from "../models/AuditLogModel.js";
 
 const RESULT_FIELDS = ["hiv", "hbv", "hcv", "hepatitis", "syphilis"];
 const RESULT_VALUES = ["pending", "negative", "positive"];
-const pendingStatuses = ["pending_screening", "pending-testing", "pending_testing", "quarantine"];
+const pendingStatuses = ["pending_screening", "pending-testing", "pending_testing", "testing", "quarantine"];
 
 const bloodAtFacility = (facilityId) => ({
 	$or: [{ bloodLab: facilityId }, { hospital: facilityId }],
@@ -43,7 +43,7 @@ export const getWorklist = async (req, res) => {
 			...bloodAtFacility(req.facilityId),
 			status: { $in: [...pendingStatuses, "qualified", "rejected"] },
 		})
-			.select("unitCode barcode bloodType bloodGroup quantity collectionDate status screeningResult")
+			.select("unitCode barcode testSampleCode bloodType bloodGroup quantity collectionDate status screeningResult donorSnapshot donationNumber intakeWarnings")
 			.sort({ createdAt: -1 })
 			.lean();
 
@@ -88,6 +88,10 @@ export const saveDraftResult = async (req, res) => {
 		});
 		record.results = results;
 		await record.save();
+		if (blood.status === "pending_screening" || blood.status === "pending-testing" || blood.status === "pending_testing") {
+			blood.status = "testing";
+			await blood.save();
+		}
 		await audit(req, "SAVE_LAB_RESULT_DRAFT", record._id, `Lưu nháp kết quả cho mẫu ${blood.unitCode}`, { before, after: results });
 
 		res.json({ success: true, message: "Đã lưu bản nháp", data: record });

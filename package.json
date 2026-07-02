@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "concurrently --kill-others-on-fail -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm --prefix backend run start\" \"npm --prefix frontend run dev\"",
+    "dev:integrated": "concurrently --kill-others-on-fail -n \"BACKEND,FRONTEND,PYTHON\" -c \"blue,green,magenta\" \"npm --prefix backend run start\" \"npm --prefix frontend run dev\" \"python python-service/integrated_service.py\"",
     "dev:backend": "npm --prefix backend run start",
-    "dev:frontend": "npm --prefix frontend run dev"
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:python": "python python-service/integrated_service.py"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

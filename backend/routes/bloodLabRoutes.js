@@ -11,10 +11,13 @@ import {
   getBloodUnitCodeImage,
   getBloodUnits,
   getLabBloodRequests,
+  importBloodBatchScreeningFromCsv,
   importBloodUnitToStock,
   importBloodBatchToStock,
   issueBloodUnits,
+  labResultCsvUpload,
   splitBloodUnitComponents,
+  updateBloodBatchScreening,
   updateBloodHandoverStatus,
   updateBloodRequestStatus,
   updateBloodUnitScreening,
@@ -47,6 +50,13 @@ router.patch("/blood/units/issue", protectFacility, issueBloodUnits);
 router.patch("/blood/units/:id/screening", protectFacility, updateBloodUnitScreening);
 router.patch("/blood/units/:id/import", protectFacility, importBloodUnitToStock);
 router.patch("/blood/units/:id/discard", protectFacility, discardBloodUnit);
+router.patch("/blood/batches/:batchCode/screening", protectFacility, updateBloodBatchScreening);
+router.post(
+  "/blood/batches/:batchCode/screening/import-csv",
+  protectFacility,
+  labResultCsvUpload.single("file"),
+  importBloodBatchScreeningFromCsv
+);
 router.patch("/blood/batches/:batchCode/import", protectFacility, importBloodBatchToStock);
 
 router.get("/blood/requests", protectFacility, getLabBloodRequests);

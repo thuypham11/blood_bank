@@ -90,13 +90,16 @@ const BloodLabDonor = () => {
 
 		try {
 			const token = localStorage.getItem("token");
-			await axios.post(
+			const res = await axios.post(
 				`http://localhost:5000/api/blood-lab/donors/donate/${selectedDonor._id}`,
 				donationData,
 				{ headers: { Authorization: `Bearer ${token}` } },
 			);
 
 			toast.success("Đã ghi nhận hiến máu thành công!");
+			if (res.data?.warnings?.length) {
+				toast.error(res.data.warnings[0]);
+			}
 			setShowDonationForm(false);
 			setSelectedDonor(null);
 			searchDonors();
@@ -232,6 +235,11 @@ const BloodLabDonor = () => {
 															Vừa Hiến Máu
 														</span>
 													)}
+													{donor.intakeWarnings?.length > 0 && (
+														<span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">
+															Cần đối chiếu
+														</span>
+													)}
 												</div>
 
 												<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
@@ -252,6 +260,11 @@ const BloodLabDonor = () => {
 														<span>Tổng số lần hiến: {donor.donationHistory?.length || 0}</span>
 													</div>
 												</div>
+												{donor.intakeWarnings?.length > 0 && (
+													<div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+														{donor.intakeWarnings[0]}
+													</div>
+												)}
 											</div>
 
 											<div className="flex gap-2 ml-4">

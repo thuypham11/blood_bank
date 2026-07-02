@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import { Toaster, toast } from "react-hot-toast";
 import {
   Droplets,
   QrCode,
@@ -20,7 +22,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  Upload,
 } from "lucide-react";
+import "./BloodStock.css";
 
 const API_URL = "http://localhost:5000/api/blood-lab";
 
@@ -43,20 +47,6 @@ const componentLabels = {
   platelets: "Khối tiểu cầu",
   plasma: "Huyết tương",
 };
-
-// Danh sách dùng để dựng giao diện; sẽ thay bằng API danh sách bệnh viện ở bước chức năng.
-const hospitalOptions = [
-  "Bệnh viện Chợ Rẫy",
-  "Bệnh viện Bạch Mai",
-  "Bệnh viện Nhân dân 115",
-  "Bệnh viện Đại học Y Dược TP.HCM",
-  "Bệnh viện Việt Đức",
-  "Bệnh viện Trung ương Huế",
-  "Bệnh viện C Đà Nẵng",
-  "Bệnh viện Nhi đồng 1",
-  "Bệnh viện Từ Dũ",
-  "BV Đa khoa Đồng Nai",
-];
 
 const issueVolumeOptions = [250, 350, 450, 500, 700, 900, 1000, 1500, 2000];
 const pageSizeOptions = [5, 10, 20];
@@ -86,13 +76,21 @@ const screeningFields = [
   { key: "syphilis", label: "Giang mai" },
 ];
 
+const emptyBatchScreeningForm = {
+  positiveField: "hbv",
+  exceptionCodes: "",
+};
+
 const emptyReceiveForm = {
   bloodType: "",
   volume: "",
   unitCount: "1",
   batchCode: "",
+  testSampleCodePrefix: "",
+  sampleType: "plasma",
   collectionDate: "",
   expiryDate: "",
+  intakeNote: "",
 };
 
 const emptyIssueForm = {
@@ -144,6 +142,16 @@ const getStatusBadge = (status) => {
       className: "bg-blue-100 text-blue-700",
       icon: <CheckCircle className="w-3 h-3" />,
     },
+    testing: {
+      label: "Đang xét nghiệm",
+      className: "bg-sky-100 text-sky-700",
+      icon: <TestTube className="w-3 h-3" />,
+    },
+    quarantine: {
+      label: "Cách ly",
+      className: "bg-orange-100 text-orange-700",
+      icon: <AlertTriangle className="w-3 h-3" />,
+    },
     available: {
       label: "Sẵn sàng trong kho",
       className: "bg-green-100 text-green-700",
@@ -189,6 +197,7 @@ const getStatusBadge = (status) => {
 };
 
 const BloodStock = () => {
+  const navigate = useNavigate();
   const [bloodUnits, setBloodUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -201,6 +210,10 @@ const BloodStock = () => {
 
   const [receiveForm, setReceiveForm] = useState(emptyReceiveForm);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [batchScreeningUnit, setBatchScreeningUnit] = useState(null);
+  const [batchScreeningForm, setBatchScreeningForm] = useState(emptyBatchScreeningForm);
+  const [batchScreeningFile, setBatchScreeningFile] = useState(null);
+  const [batchScreeningSubmitting, setBatchScreeningSubmitting] = useState(false);
   const [issueForm, setIssueForm] = useState(emptyIssueForm);
   const [selectedIssueUnits, setSelectedIssueUnits] = useState([]);
   const [customIssueVolume, setCustomIssueVolume] = useState(false);
@@ -218,6 +231,12 @@ const BloodStock = () => {
   const [selectedComponents, setSelectedComponents] = useState(
     bloodComponents.map((component) => component.key)
   );
+
+  const handleAuthFailure = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    navigate("/login", { replace: true });
+  };
 
   const summary = useMemo(() => {
     const storageStatuses = new Set([
@@ -343,6 +362,10 @@ const BloodStock = () => {
       setLoading(true);
 
       const token = getToken();
+      if (!token) {
+        handleAuthFailure();
+        return;
+      }
 
       const { data } = await axios.get(`${API_URL}/blood/units`, {
         headers: {
@@ -356,6 +379,10 @@ const BloodStock = () => {
 
     } catch (error) {
       console.error("Fetch Blood Units Error:", error.response?.data || error);
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        handleAuthFailure();
+        return;
+      }
       alert(error.response?.data?.message || "Không thể tải danh sách túi máu");
     } finally {
       setLoading(false);
@@ -368,17 +395,28 @@ const BloodStock = () => {
 
   const validateReceiveForm = () => {
     if (!receiveForm.bloodType) {
-      alert("Vui lòng chọn nhóm máu");
+      toast.error("Vui lòng chọn nhóm máu");
       return false;
     }
 
     if (!receiveForm.volume || Number(receiveForm.volume) <= 0) {
-      alert("Vui lòng nhập dung tích hợp lệ");
+      toast.error("Vui lòng nhập dung tích hợp lệ");
       return false;
     }
 
     if (!receiveForm.collectionDate) {
-      alert("Vui lòng chọn ngày lấy máu");
+      toast.error("Vui lòng chọn ngày lấy máu");
+      return false;
+    }
+
+    const unitCount = Number(receiveForm.unitCount || 0);
+    if (!Number.isInteger(unitCount) || unitCount < 1 || unitCount > 500) {
+      toast.error("Số lượng túi trong lô phải từ 1 đến 500");
+      return false;
+    }
+
+    if (receiveForm.expiryDate && receiveForm.expiryDate <= receiveForm.collectionDate) {
+      toast.error("Hạn dùng phải sau ngày lấy máu");
       return false;
     }
 
@@ -393,14 +431,23 @@ const BloodStock = () => {
       setSubmitting(true);
 
       const token = getToken();
+      if (!token) {
+        handleAuthFailure();
+        return;
+      }
 
-      const res = await axios.post(
-        `${API_URL}/blood/units`,
+      await axios.post(
+        `${API_URL}/blood/units/batch`,
         {
           bloodType: receiveForm.bloodType,
           quantity: Number(receiveForm.volume),
+          unitCount: Number(receiveForm.unitCount),
+          batchCode: receiveForm.batchCode || undefined,
+          testSampleCodePrefix: receiveForm.testSampleCodePrefix || undefined,
+          sampleType: receiveForm.sampleType || "unknown",
           collectionDate: receiveForm.collectionDate,
           expiryDate: receiveForm.expiryDate || undefined,
+          intakeNote: receiveForm.intakeNote || undefined,
         },
         {
           headers: {
@@ -414,10 +461,155 @@ const BloodStock = () => {
       setReceiveForm(emptyReceiveForm);
       await fetchBloodUnits();
     } catch (error) {
-      console.error("Create Blood Unit Error:", error.response?.data || error);
-      alert(error.response?.data?.message || "Không thể tạo túi máu");
+      console.error("Create Blood Batch Error:", error.response?.data || error);
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        handleAuthFailure();
+        return;
+      }
+      alert(error.response?.data?.message || "Không thể nhập lô máu");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleImportBatchToStock = async (batchCode) => {
+    const confirmed = window.confirm(
+      `Chỉ chuyển các túi đã đạt sàng lọc âm tính trong lô ${batchCode} sang sẵn sàng. Các túi còn chờ xét nghiệm sẽ được giữ nguyên.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setBatchSubmitting(true);
+      const token = getToken();
+      if (!token) {
+        handleAuthFailure();
+        return;
+      }
+
+      await axios.patch(
+        `${API_URL}/blood/batches/${encodeURIComponent(batchCode)}/import`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      await fetchBloodUnits();
+    } catch (error) {
+      console.error("Import Blood Batch Error:", error.response?.data || error);
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        handleAuthFailure();
+        return;
+      }
+      alert(error.response?.data?.message || "Không thể chuyển lô sang sẵn sàng");
+    } finally {
+      setBatchSubmitting(false);
+    }
+  };
+
+  const handleOpenBatchScreening = (batch) => {
+    setBatchScreeningUnit(batch);
+    setBatchScreeningForm(emptyBatchScreeningForm);
+    setBatchScreeningFile(null);
+  };
+
+  const handleSaveBatchScreening = async () => {
+    if (!batchScreeningUnit?.batchCode) return;
+
+    const exceptionCodes = batchScreeningForm.exceptionCodes
+      .split(/\r?\n|,|;/)
+      .map((code) => code.trim())
+      .filter(Boolean);
+
+    const confirmed = window.confirm(
+      exceptionCodes.length > 0
+        ? `Cập nhật lô ${batchScreeningUnit.batchCode}: ${exceptionCodes.length} túi/mẫu ngoại lệ không đạt, các túi còn lại đạt sàng lọc?`
+        : `Xác nhận toàn bộ lô ${batchScreeningUnit.batchCode} đạt sàng lọc?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setBatchScreeningSubmitting(true);
+      const token = getToken();
+      if (!token) {
+        handleAuthFailure();
+        return;
+      }
+
+      await axios.patch(
+        `${API_URL}/blood/batches/${encodeURIComponent(batchScreeningUnit.batchCode)}/screening`,
+        {
+          positiveField: batchScreeningForm.positiveField,
+          exceptionCodes,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setBatchScreeningUnit(null);
+      setBatchScreeningForm(emptyBatchScreeningForm);
+      setBatchScreeningFile(null);
+      await fetchBloodUnits();
+    } catch (error) {
+      console.error("Update Batch Screening Error:", error.response?.data || error);
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        handleAuthFailure();
+        return;
+      }
+      alert(error.response?.data?.message || "Không thể cập nhật xét nghiệm theo lô");
+    } finally {
+      setBatchScreeningSubmitting(false);
+    }
+  };
+
+  const handleImportBatchScreeningCsv = async () => {
+    if (!batchScreeningUnit?.batchCode || !batchScreeningFile) {
+      alert("Vui lòng chọn file CSV kết quả xét nghiệm");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Import file ${batchScreeningFile.name} cho lô ${batchScreeningUnit.batchCode} bằng Python service?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setBatchScreeningSubmitting(true);
+      const token = getToken();
+      if (!token) {
+        handleAuthFailure();
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", batchScreeningFile);
+
+      const { data } = await axios.post(
+        `${API_URL}/blood/batches/${encodeURIComponent(batchScreeningUnit.batchCode)}/screening/import-csv`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const unknownCount = data.data?.unknownCodes?.length || 0;
+      alert(
+        unknownCount > 0
+          ? `Đã import file. Có ${unknownCount} mã không thuộc lô và đã được bỏ qua.`
+          : "Đã import kết quả xét nghiệm bằng Python service"
+      );
+      setBatchScreeningUnit(null);
+      setBatchScreeningForm(emptyBatchScreeningForm);
+      setBatchScreeningFile(null);
+      await fetchBloodUnits();
+    } catch (error) {
+      console.error("Import Batch Screening CSV Error:", error.response?.data || error);
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        handleAuthFailure();
+        return;
+      }
+      alert(error.response?.data?.message || "Không thể import CSV bằng Python service");
+    } finally {
+      setBatchScreeningSubmitting(false);
     }
   };
 
@@ -599,7 +791,7 @@ const BloodStock = () => {
 
   const handleBarcodePreview = async () => {
     if (!barcodeValue.trim()) {
-      alert("Vui lòng quét hoặc nhập mã barcode");
+      alert("Vui lòng quét hoặc nhập mã túi/mã mẫu xét nghiệm");
       return;
     }
 
@@ -614,7 +806,49 @@ const BloodStock = () => {
       setScannedUnit(data.data);
     } catch (error) {
       console.error("Lookup Barcode Error:", error.response?.data || error);
-      alert(error.response?.data?.message || "Không tìm thấy barcode");
+      alert(error.response?.data?.message || "Không tìm thấy mã túi hoặc mã mẫu");
+    } finally {
+      setBarcodeLoading(false);
+    }
+  };
+
+  const handleRejectScannedUnit = async () => {
+    if (!scannedUnit?._id) return;
+
+    const confirmed = window.confirm(
+      `Đánh túi ${scannedUnit.barcode || scannedUnit.unitCode} là không đạt?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setBarcodeLoading(true);
+      const token = getToken();
+      if (!token) {
+        handleAuthFailure();
+        return;
+      }
+
+      const { data } = await axios.patch(
+        `${API_URL}/blood/units/${scannedUnit._id}/screening`,
+        {
+          hiv: "positive",
+          hbv: "negative",
+          hcv: "negative",
+          hepatitis: "negative",
+          syphilis: "negative",
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setScannedUnit(data.data);
+      await fetchBloodUnits();
+    } catch (error) {
+      console.error("Reject Scanned Unit Error:", error.response?.data || error);
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        handleAuthFailure();
+        return;
+      }
+      alert(error.response?.data?.message || "Không thể đánh dấu túi không đạt");
     } finally {
       setBarcodeLoading(false);
     }
@@ -646,7 +880,8 @@ const BloodStock = () => {
 
   return (
     <div className="min-h-screen bg-red-50 p-6">
-      <div className="mb-6 bg-white rounded-2xl shadow-sm border border-red-100 p-6">
+      <Toaster position="top-right" />
+      <div className="blood-stock-panel mb-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
@@ -666,34 +901,34 @@ const BloodStock = () => {
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-3 font-medium text-white shadow-sm hover:bg-gray-800"
           >
             <ScanLine className="h-5 w-5" />
-            Quét mã Barcode
+            Tra cứu mã túi/mẫu
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-red-100 p-5">
+        <div className="blood-stock-summary-card">
           <p className="text-sm text-gray-500">Tổng đơn vị trong kho</p>
           <p className="text-2xl font-bold text-gray-800 mt-1">
             {summary.total}
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-red-100 p-5">
+        <div className="blood-stock-summary-card">
           <p className="text-sm text-gray-500">Chờ xử lý</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">
             {summary.pending}
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-red-100 p-5">
+        <div className="blood-stock-summary-card">
           <p className="text-sm text-gray-500">Sẵn sàng trong kho</p>
           <p className="text-2xl font-bold text-green-600 mt-1">
             {summary.available}
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-red-100 p-5">
+        <div className="blood-stock-summary-card">
           <p className="text-sm text-gray-500">Đã xuất kho</p>
           <p className="text-2xl font-bold text-purple-600 mt-1">
             {summary.issued}
@@ -701,7 +936,7 @@ const BloodStock = () => {
         </div>
       </div>
 
-      <div className="mb-6 rounded-2xl border border-red-100 bg-white p-5 shadow-sm">
+      <div className="blood-stock-panel mb-6 p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">Số lượng theo nhóm máu</h2>
@@ -728,11 +963,14 @@ const BloodStock = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
+        <div className="blood-stock-panel">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
             <PlusCircle className="w-5 h-5 text-red-600" />
-            Tiếp nhận túi máu mới
+            Nhập nhanh theo lô
           </h2>
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Túi máu mới nhập sẽ ở trạng thái chờ sàng lọc. Hệ thống chỉ cho chuyển sang sẵn sàng sau khi đủ kết quả âm tính bắt buộc.
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -744,7 +982,7 @@ const BloodStock = () => {
                 onChange={(e) =>
                   setReceiveForm({ ...receiveForm, bloodType: e.target.value })
                 }
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="blood-stock-input"
               >
                 <option value="">Chọn nhóm máu</option>
                 {bloodTypes.map((type) => (
@@ -764,13 +1002,64 @@ const BloodStock = () => {
                 onChange={(e) =>
                   setReceiveForm({ ...receiveForm, volume: e.target.value })
                 }
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="blood-stock-input"
               >
                 <option value="">Chọn dung tích</option>
                 <option value="250">250 ml</option>
                 <option value="350">350 ml</option>
                 <option value="450">450 ml</option>
+                <option value="700">700 ml</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Mã lô
+              </label>
+              <input
+                value={receiveForm.batchCode}
+                onChange={(e) =>
+                  setReceiveForm({ ...receiveForm, batchCode: e.target.value.toUpperCase() })
+                }
+                className="blood-stock-input"
+                placeholder="Nhập mã lô"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Tiền tố mã mẫu xét nghiệm
+              </label>
+              <input
+                value={receiveForm.testSampleCodePrefix}
+                onChange={(e) =>
+                  setReceiveForm({
+                    ...receiveForm,
+                    testSampleCodePrefix: e.target.value.toUpperCase(),
+                  })
+                }
+                className="blood-stock-input"
+                placeholder="Nhập tiền tố mã mẫu"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Mỗi túi sẽ tự sinh hậu tố tăng dần để truy xuất mẫu.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Số lượng túi
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={receiveForm.unitCount}
+                onChange={(e) =>
+                  setReceiveForm({ ...receiveForm, unitCount: e.target.value })
+                }
+                className="blood-stock-input"
+              />
             </div>
 
             <div>
@@ -786,8 +1075,26 @@ const BloodStock = () => {
                     collectionDate: e.target.value,
                   })
                 }
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="blood-stock-input"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Loại mẫu xét nghiệm
+              </label>
+              <select
+                value={receiveForm.sampleType}
+                onChange={(e) =>
+                  setReceiveForm({ ...receiveForm, sampleType: e.target.value })
+                }
+                className="blood-stock-input"
+              >
+                <option value="plasma">Huyết tương</option>
+                <option value="serum">Huyết thanh</option>
+                <option value="whole_blood">Máu toàn phần</option>
+                <option value="unknown">Chưa xác định</option>
+              </select>
             </div>
 
             <div>
@@ -800,7 +1107,22 @@ const BloodStock = () => {
                 onChange={(e) =>
                   setReceiveForm({ ...receiveForm, expiryDate: e.target.value })
                 }
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="blood-stock-input"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Ghi chú tiếp nhận
+              </label>
+              <textarea
+                value={receiveForm.intakeNote}
+                onChange={(e) =>
+                  setReceiveForm({ ...receiveForm, intakeNote: e.target.value })
+                }
+                rows={2}
+                className="blood-stock-input"
+                placeholder="Nhập ghi chú tiếp nhận"
               />
             </div>
 
@@ -809,20 +1131,20 @@ const BloodStock = () => {
                 type="button"
                 onClick={handleReceiveBlood}
                 disabled={submitting}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:bg-gray-300"
+                className="blood-stock-primary-button w-full"
               >
                 {submitting ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <PlusCircle className="w-4 h-4" />
                 )}
-                {submitting ? "Đang tạo..." : "Tạo túi máu"}
+                {submitting ? "Đang nhập lô..." : "Nhập lô máu"}
               </button>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
+        <div className="blood-stock-panel">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
             <Send className="w-5 h-5 text-red-600" />
             Xuất máu theo yêu cầu bệnh viện
@@ -841,7 +1163,7 @@ const BloodStock = () => {
                     setIssueForm({ ...issueForm, bloodType: e.target.value });
                     setSelectedIssueUnits([]);
                   }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  className="blood-stock-input"
                 >
                   <option value="">Chọn nhóm máu</option>
                   {bloodTypes.map((type) => (
@@ -868,7 +1190,7 @@ const BloodStock = () => {
                     });
                     setSelectedIssueUnits([]);
                   }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  className="blood-stock-input"
                 >
                   <option value="">Chọn dung tích cần xuất</option>
                   {issueVolumeOptions.map((volume) => (
@@ -891,7 +1213,7 @@ const BloodStock = () => {
                       });
                       setSelectedIssueUnits([]);
                     }}
-                    className="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2"
+                    className="blood-stock-input mt-2"
                     placeholder="Nhập số ml cần xuất"
                   />
                 )}
@@ -902,19 +1224,15 @@ const BloodStock = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Bệnh viện nhận
               </label>
-              <select
+              <input
                 required
                 value={issueForm.hospitalName}
                 onChange={(e) =>
                   setIssueForm({ ...issueForm, hospitalName: e.target.value })
                 }
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
-              >
-                <option value="">Chọn bệnh viện trong hệ thống</option>
-                {hospitalOptions.map((hospital) => (
-                  <option key={hospital} value={hospital}>{hospital}</option>
-                ))}
-              </select>
+                className="blood-stock-input"
+                placeholder="Nhập tên bệnh viện hoặc cơ sở nhận máu"
+              />
             </div>
 
             <div>
@@ -926,8 +1244,8 @@ const BloodStock = () => {
                 onChange={(e) =>
                   setIssueForm({ ...issueForm, reason: e.target.value })
                 }
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                placeholder="Cấp máu theo yêu cầu"
+                className="blood-stock-input"
+                placeholder="Nhập lý do xuất máu"
               />
             </div>
 
@@ -988,7 +1306,96 @@ const BloodStock = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
+      <div className="blood-stock-panel mb-6">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Các lô máu đã nhập</h2>
+            <p className="text-sm text-gray-500">
+              Chỉ các túi đã có kết quả sàng lọc âm tính đầy đủ mới được chuyển sang sẵn sàng.
+            </p>
+          </div>
+          <span className="rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-700">
+            {batchSummary.length} lô
+          </span>
+        </div>
+
+        {batchSummary.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
+            Chưa có lô máu nào được nhập.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {batchSummary.map((batch) => {
+              const canImport = batch.qualified > 0;
+              const canUpdateScreening = batch.pending + batch.qualified + batch.rejected > 0;
+              return (
+                <div key={batch.batchCode} className="blood-stock-card">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-gray-900">{batch.batchCode}</p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Nhóm {batch.bloodType} · {batch.quantity} ml/túi · {batch.volume.toLocaleString("vi-VN")} ml
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Ngày lấy: {formatDate(batch.collectionDate)} · HSD: {formatDate(batch.expiryDate)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBatchScreening(batch)}
+                        disabled={!canUpdateScreening || batchScreeningSubmitting}
+                        className="blood-stock-info-button"
+                      >
+                        <TestTube className="h-4 w-4" />
+                        Cập nhật xét nghiệm lô
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleImportBatchToStock(batch.batchCode)}
+                        disabled={!canImport || batchSubmitting}
+                        className="blood-stock-success-button"
+                      >
+                        {batchSubmitting ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <PackageCheck className="h-4 w-4" />
+                        )}
+                        Chuyển túi đạt sang sẵn sàng
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-5 gap-2 text-center text-xs">
+                    <div className="rounded-lg bg-gray-50 p-2">
+                      <p className="font-bold text-gray-900">{batch.total}</p>
+                      <p className="text-gray-500">Tổng</p>
+                    </div>
+                    <div className="rounded-lg bg-amber-50 p-2">
+                      <p className="font-bold text-amber-700">{batch.pending}</p>
+                      <p className="text-amber-700">Chờ</p>
+                    </div>
+                    <div className="rounded-lg bg-blue-50 p-2">
+                      <p className="font-bold text-blue-700">{batch.qualified}</p>
+                      <p className="text-blue-700">Đạt</p>
+                    </div>
+                    <div className="rounded-lg bg-green-50 p-2">
+                      <p className="font-bold text-green-700">{batch.available}</p>
+                      <p className="text-green-700">Sẵn sàng</p>
+                    </div>
+                    <div className="rounded-lg bg-red-50 p-2">
+                      <p className="font-bold text-red-700">{batch.rejected + batch.discarded}</p>
+                      <p className="text-red-700">Loại</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="blood-stock-panel">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-gray-800">
             Danh sách túi máu
@@ -1029,7 +1436,7 @@ const BloodStock = () => {
                   setSortOrder(event.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                className="blood-stock-input-sm"
               >
                 <option value="newest">Mới nhất đến cũ nhất</option>
                 <option value="oldest">Cũ nhất đến mới nhất</option>
@@ -1044,7 +1451,7 @@ const BloodStock = () => {
                   setComponentFilter(event.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                className="blood-stock-input-sm"
               >
                 <option value="all">Tất cả các loại</option>
                 {Object.entries(componentLabels).map(([value, label]) => (
@@ -1061,7 +1468,7 @@ const BloodStock = () => {
                   setBloodTypeFilter(event.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                className="blood-stock-input-sm"
               >
                 <option value="all">Tất cả nhóm máu</option>
                 {bloodTypes.map((type) => (
@@ -1078,7 +1485,7 @@ const BloodStock = () => {
                   setStatusFilter(event.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                className="blood-stock-input-sm"
               >
                 <option value="all">Tất cả trạng thái</option>
                 {statusFilterOptions.map((status) => (
@@ -1148,10 +1555,35 @@ const BloodStock = () => {
                         {componentLabels[unit.componentType || "whole_blood"]}
                       </p>
 
+                      {unit.batchCode && (
+                        <p className="mt-1 text-xs text-red-600">
+                          Lô: {unit.batchCode}
+                        </p>
+                      )}
+
                       {unit.parentBarcode && (
                         <p className="mt-1 text-xs text-blue-600">
                           ParentID: {unit.parentBarcode}
                         </p>
+                      )}
+
+                      {unit.testSampleCode && (
+                        <p className="mt-1 text-xs text-emerald-700">
+                          Mẫu XN: {unit.testSampleCode}
+                        </p>
+                      )}
+
+                      {(unit.donorSnapshot?.fullName || unit.donor?.fullName) && (
+                        <p className="mt-1 text-xs text-gray-600">
+                          Người hiến: {unit.donorSnapshot?.fullName || unit.donor?.fullName}
+                          {unit.donationNumber ? ` · Lần ${unit.donationNumber}` : ""}
+                        </p>
+                      )}
+
+                      {unit.intakeWarnings?.length > 0 && (
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                          {unit.intakeWarnings[0]}
+                        </div>
                       )}
 
                       {unit.issuedTo && (
@@ -1176,6 +1608,11 @@ const BloodStock = () => {
                       <span className="font-bold text-red-600">
                         {unit.bloodType}
                       </span>
+                      {(unit.aboGroup || unit.rhFactor) && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          ABO: {unit.aboGroup || "-"} · Rh(D): {unit.rhFactor ? (unit.rhFactor === "negative" ? "Âm" : "Dương") : "-"}
+                        </p>
+                      )}
                     </td>
 
                     <td className="p-3 text-gray-700">{unit.quantity} ml</td>
@@ -1289,7 +1726,7 @@ const BloodStock = () => {
                   type="button"
                   onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                   disabled={currentPage === 1}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="blood-stock-ghost-button"
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Trước
@@ -1298,7 +1735,7 @@ const BloodStock = () => {
                   type="button"
                   onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
                   disabled={currentPage === totalPages}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="blood-stock-ghost-button"
                 >
                   Sau
                   <ChevronRight className="h-4 w-4" />
@@ -1311,9 +1748,9 @@ const BloodStock = () => {
       </div>
 
       {barcodePreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b px-6 py-4">
+        <div className="blood-stock-modal-backdrop-strong">
+          <div className="w-full max-w-sm blood-stock-modal">
+            <div className="blood-stock-modal-header">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800">Mã định danh đơn vị máu</h3>
                 <p className="mt-1 text-xs text-gray-500">QR · Mức sửa lỗi H</p>
@@ -1345,16 +1782,16 @@ const BloodStock = () => {
       )}
 
       {barcodeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b px-6 py-4">
+        <div className="blood-stock-modal-backdrop-strong">
+          <div className="w-full max-w-lg blood-stock-modal">
+            <div className="blood-stock-modal-header">
               <div>
                 <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
                   <ScanLine className="h-5 w-5 text-red-600" />
-                  Quét mã Barcode
+                  Tra cứu mã túi hoặc mã mẫu
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Đưa mã trên túi máu vào vùng quét bên dưới.
+                  Nhập mã trên túi máu hoặc mã mẫu xét nghiệm để kiểm tra thông tin lưu trữ.
                 </p>
               </div>
               <button
@@ -1371,24 +1808,15 @@ const BloodStock = () => {
             </div>
 
             <div className="space-y-5 p-6">
-              <div className="relative flex h-56 items-center justify-center overflow-hidden rounded-2xl bg-gray-950">
-                <div className="absolute inset-7 rounded-xl border-2 border-white/80" />
-                <div className="absolute left-10 right-10 top-1/2 h-0.5 bg-red-500 shadow-[0_0_14px_3px_rgba(239,68,68,0.65)]" />
-                <div className="text-center text-white/70">
-                  <QrCode className="mx-auto mb-2 h-14 w-14" />
-                  <p className="text-sm">Khu vực xem trước camera</p>
-                </div>
-              </div>
-
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Hoặc nhập mã barcode
+                  Mã túi hoặc mã mẫu
                 </label>
                 <input
                   value={barcodeValue}
                   onChange={(event) => setBarcodeValue(event.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                  placeholder="Ví dụ: BLD-2026-00001"
+                  className="blood-stock-input"
+                  placeholder="Nhập mã túi hoặc mã mẫu xét nghiệm"
                 />
               </div>
 
@@ -1403,7 +1831,7 @@ const BloodStock = () => {
                 ) : (
                   <ScanLine className="h-4 w-4" />
                 )}
-                {barcodeLoading ? "Đang tra cứu..." : "Nhận diện barcode"}
+                {barcodeLoading ? "Đang tra cứu..." : "Tra cứu mã"}
               </button>
 
               {scannedUnit && (
@@ -1415,6 +1843,18 @@ const BloodStock = () => {
                   <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-gray-700">
                     <dt className="text-gray-500">ID</dt>
                     <dd className="break-all font-medium">{scannedUnit.barcode || scannedUnit.unitCode}</dd>
+                    {scannedUnit.testSampleCode && (
+                      <>
+                        <dt className="text-gray-500">Mẫu XN</dt>
+                        <dd className="break-all">{scannedUnit.testSampleCode}</dd>
+                      </>
+                    )}
+                    {(scannedUnit.donorSnapshot?.fullName || scannedUnit.donor?.fullName) && (
+                      <>
+                        <dt className="text-gray-500">Người hiến</dt>
+                        <dd>{scannedUnit.donorSnapshot?.fullName || scannedUnit.donor?.fullName}</dd>
+                      </>
+                    )}
                     <dt className="text-gray-500">Loại</dt>
                     <dd>{componentLabels[scannedUnit.componentType || "whole_blood"]}</dd>
                     <dt className="text-gray-500">Nhóm máu</dt>
@@ -1436,9 +1876,9 @@ const BloodStock = () => {
       )}
 
       {componentUnit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b px-6 py-4">
+        <div className="blood-stock-modal-backdrop-strong">
+          <div className="w-full max-w-2xl blood-stock-modal">
+            <div className="blood-stock-modal-header">
               <div>
                 <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
                   <Layers3 className="h-5 w-5 text-blue-600" />
@@ -1501,7 +1941,7 @@ const BloodStock = () => {
                                   },
                                 }))
                               }
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              className="blood-stock-input-sm"
                               placeholder="Nhập dung tích"
                             />
                           </div>
@@ -1519,7 +1959,7 @@ const BloodStock = () => {
                                   },
                                 }))
                               }
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              className="blood-stock-input-sm"
                             />
                           </div>
                         </div>
@@ -1534,11 +1974,11 @@ const BloodStock = () => {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 border-t bg-gray-50 px-6 py-4">
+            <div className="blood-stock-modal-footer">
               <button
                 type="button"
                 onClick={() => setComponentUnit(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-100"
+                className="blood-stock-secondary-button"
               >
                 Hủy
               </button>
@@ -1560,10 +2000,159 @@ const BloodStock = () => {
         </div>
       )}
 
+      {batchScreeningUnit && (
+        <div className="blood-stock-modal-backdrop">
+          <div className="w-full max-w-xl blood-stock-modal">
+            <div className="blood-stock-modal-header">
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
+                  <TestTube className="h-5 w-5 text-blue-600" />
+                  Cập nhật xét nghiệm theo lô
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {batchScreeningUnit.batchCode} · {batchScreeningUnit.total} túi · {batchScreeningUnit.volume.toLocaleString("vi-VN")} ml
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBatchScreeningUnit(null);
+                  setBatchScreeningForm(emptyBatchScreeningForm);
+                  setBatchScreeningFile(null);
+                }}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Đóng cập nhật xét nghiệm lô"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                Mặc định hệ thống sẽ ghi âm tính cho các túi không nằm trong danh sách ngoại lệ và chuyển chúng sang Đạt sàng lọc.
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Tác nhân dương tính của túi ngoại lệ
+                </label>
+                <select
+                  value={batchScreeningForm.positiveField}
+                  onChange={(event) =>
+                    setBatchScreeningForm({
+                      ...batchScreeningForm,
+                      positiveField: event.target.value,
+                    })
+                  }
+                  className="blood-stock-input"
+                >
+                  {screeningFields.map((field) => (
+                    <option key={field.key} value={field.key}>
+                      {field.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Mã túi hoặc mã mẫu không đạt
+                </label>
+                <textarea
+                  value={batchScreeningForm.exceptionCodes}
+                  onChange={(event) =>
+                    setBatchScreeningForm({
+                      ...batchScreeningForm,
+                      exceptionCodes: event.target.value,
+                    })
+                  }
+                  rows={7}
+                  className="blood-stock-textarea-mono"
+                  placeholder="Nhập mỗi dòng một mã túi hoặc mã mẫu không đạt"
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  Có thể nhập mỗi dòng một mã, hoặc phân tách bằng dấu phẩy/chấm phẩy. Để trống nếu toàn bộ lô đạt.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <label className="mb-2 block text-sm font-medium text-blue-800">
+                  Import CSV bằng Python service
+                </label>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => setBatchScreeningFile(event.target.files?.[0] || null)}
+                  className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"
+                />
+                <p className="mt-2 text-xs text-blue-700">
+                  CSV cần có cột mã mẫu/mã túi và các cột HIV, HBV, HCV, Viêm gan, Giang mai.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleImportBatchScreeningCsv}
+                  disabled={!batchScreeningFile || batchScreeningSubmitting}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  {batchScreeningSubmitting ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  Import CSV
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                <div className="rounded-lg bg-amber-50 p-3">
+                  <p className="font-bold text-amber-700">{batchScreeningUnit.pending}</p>
+                  <p className="text-amber-700">Đang chờ</p>
+                </div>
+                <div className="rounded-lg bg-blue-50 p-3">
+                  <p className="font-bold text-blue-700">{batchScreeningUnit.qualified}</p>
+                  <p className="text-blue-700">Đã đạt</p>
+                </div>
+                <div className="rounded-lg bg-red-50 p-3">
+                  <p className="font-bold text-red-700">{batchScreeningUnit.rejected}</p>
+                  <p className="text-red-700">Không đạt</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="blood-stock-modal-footer">
+              <button
+                type="button"
+                onClick={() => {
+                  setBatchScreeningUnit(null);
+                  setBatchScreeningForm(emptyBatchScreeningForm);
+                  setBatchScreeningFile(null);
+                }}
+                className="blood-stock-secondary-button"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBatchScreening}
+                disabled={batchScreeningSubmitting}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                {batchScreeningSubmitting ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4" />
+                )}
+                {batchScreeningSubmitting ? "Đang cập nhật..." : "Xác nhận cập nhật"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedUnit && screeningForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b">
+        <div className="blood-stock-modal-backdrop">
+          <div className="w-full max-w-md blood-stock-modal">
+            <div className="blood-stock-modal-title">
               <h3 className="text-lg font-semibold text-gray-800">
                 Cập nhật sàng lọc
               </h3>
@@ -1586,7 +2175,7 @@ const BloodStock = () => {
                         [field.key]: e.target.value,
                       })
                     }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    className="blood-stock-input"
                   >
                     <option value="pending">Đang chờ</option>
                     <option value="negative">Âm tính</option>
@@ -1596,20 +2185,20 @@ const BloodStock = () => {
               ))}
             </div>
 
-            <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 border-t">
+            <div className="blood-stock-modal-footer">
               <button
                 onClick={() => {
                   setSelectedUnit(null);
                   setScreeningForm(null);
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                className="blood-stock-secondary-button"
               >
                 Hủy
               </button>
 
               <button
                 onClick={handleSaveScreening}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                className="blood-stock-danger-button"
               >
                 Lưu kết quả
               </button>
