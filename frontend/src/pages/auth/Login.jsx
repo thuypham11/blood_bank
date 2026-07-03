@@ -144,8 +144,8 @@ export default function Login() {
 							: role === "admin"
 								? "/admin"
 								: role === "donation_staff"
-								? "/staff"
-								: "/");
+									? "/staff"
+									: "/");
 			navigate(targetPath, { replace: true });
 		} catch (err) {
 			setError(err.message);
@@ -400,7 +400,7 @@ export default function Login() {
 
 						<p className="mt-6 text-center text-gray-600 text-sm">
 							Chưa có tài khoản?{" "}
-							<a href="/" className="text-red-600 font-medium hover:underline">
+							<a href="/register" className="text-red-600 font-medium hover:underline">
 								Đăng ký ngay
 							</a>
 						</p>
