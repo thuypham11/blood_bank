@@ -1,6 +1,7 @@
 import Blood from "../models/BloodModel.js";
 import Facility from "../models/facilityModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
+import Donor from "../models/donorModel.js";
 import QRCode from "qrcode";
 import axios from "axios";
 import multer from "multer";
@@ -39,6 +40,27 @@ const normalizeSamplePrefix = (value) =>
 const normalizeLookupCode = (value) =>
     normalizeOptionalText(value)?.toUpperCase();
 
+const normalizePersonName = (value) =>
+    String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/Đ/g, "D")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+
+const normalizeCodeList = (value) => {
+    const items = Array.isArray(value)
+        ? value
+        : String(value || "")
+            .split(/[\n,;]+/);
+
+    return items
+        .map((item) => normalizeLookupCode(item))
+        .filter(Boolean);
+};
+
 const validateIntakeDates = ({ collectionDate, expiryDate }) => {
     const collectedAt = new Date(collectionDate);
     if (!collectionDate || Number.isNaN(collectedAt.getTime())) {
@@ -62,6 +84,39 @@ const validateIntakeDates = ({ collectionDate, expiryDate }) => {
     }
 
     return null;
+};
+
+const findDonorForBloodUnit = async ({ donorName, bloodType }) => {
+    const normalizedName = normalizePersonName(donorName);
+    if (!normalizedName) return { donor: null, donorSnapshot: undefined };
+
+    const candidates = await Donor.find({ bloodGroup: bloodType })
+        .select("fullName phone email bloodGroup donationHistory lastDonationDate")
+        .limit(100);
+
+    const donor = candidates.find(
+        (item) => normalizePersonName(item.fullName) === normalizedName
+    ) || null;
+
+    if (!donor) {
+        return {
+            donor: null,
+            donorSnapshot: {
+                fullName: String(donorName).trim(),
+                bloodGroup: bloodType,
+            },
+        };
+    }
+
+    return {
+        donor,
+        donorSnapshot: {
+            fullName: donor.fullName,
+            phone: donor.phone,
+            email: donor.email,
+            bloodGroup: donor.bloodGroup,
+        },
+    };
 };
 
 export const getBloodLabDashboard = async (req, res) => {
@@ -182,17 +237,30 @@ export const getBloodUnitByBarcode = async (req, res) => {
         const unit = await Blood.findOne({
             $and: [
                 labFilter(req.user._id),
-                { $or: [{ barcode: lookupCode }, { unitCode: lookupCode }, { testSampleCode: lookupCode }] },
+                {
+                    $or: [
+                        { barcode: lookupCode },
+                        { unitCode: lookupCode },
+                        { testSampleCode: lookupCode },
+                        { "donorSnapshot.fullName": lookupCode }
+                    ]
+                },
             ],
         })
             .populate("parentUnit", "barcode unitCode componentType")
-            .populate("donor", "fullName phone email bloodGroup");
+            .populate("donor", "fullName phone email bloodGroup age gender");
 
         if (!unit) {
             return res.status(404).json({ success: false, message: "Không tìm thấy đơn vị máu" });
         }
 
-        res.json({ success: true, data: unit });
+        // Nếu donor không có dữ liệu nhưng donorSnapshot có, sử dụng donorSnapshot
+        const responseData = {
+            ...unit.toObject(),
+            donorInfo: unit.donor || unit.donorSnapshot || null
+        };
+
+        res.json({ success: true, data: responseData });
     } catch (error) {
         console.error("Lookup Barcode Error:", error);
         res.status(500).json({ success: false, message: "Không thể tra cứu barcode" });
@@ -357,6 +425,8 @@ export const createBloodUnit = async (req, res) => {
         console.log("BODY:", req.body);
         const labId = req.user._id;
         const {
+            unitCode: providedUnitCode,
+            barcode,
             bloodType,
             quantity,
             collectionDate,
@@ -364,8 +434,11 @@ export const createBloodUnit = async (req, res) => {
             testSampleCode,
             sampleType,
             intakeNote,
+            qrPayload,
+            donorName,
         } = req.body || {};
         const allowedQuantities = [250, 350, 450, 700];
+        const normalizedUnitCode = normalizeLookupCode(providedUnitCode || barcode);
 
         if (!allowedQuantities.includes(Number(quantity))) {
             return res.status(400).json({
@@ -374,16 +447,16 @@ export const createBloodUnit = async (req, res) => {
             });
         }
 
-        if (!BLOOD_TYPES.includes(bloodType) || !quantity || !collectionDate) {
+        if (!normalizedUnitCode || !BLOOD_TYPES.includes(bloodType) || !quantity || !collectionDate || !expiryDate) {
             return res.status(400).json({
                 success: false,
-                message: "Vui lòng nhập nhóm máu , dung tích và ngày lấy máu",
+                message: "Vui long nhap ma tui mau, nhom mau, the tich, ngay hien mau va han su dung",
             });
         }
         if (Number(quantity) <= 0) {
             return res.status(400).json({
                 success: false,
-                message: "Dung tích máu phải lớn hơn 0",
+                message: "Dung tich mau phai lon hon 0",
             });
         }
 
@@ -395,22 +468,40 @@ export const createBloodUnit = async (req, res) => {
             });
         }
 
-        const unitCode = await generateBloodStorageId({ facilityId: labId });
+        const duplicatedUnit = await Blood.exists({
+            ...labFilter(labId),
+            $or: [{ unitCode: normalizedUnitCode }, { barcode: normalizedUnitCode }],
+        });
+        if (duplicatedUnit) {
+            return res.status(409).json({
+                success: false,
+                message: "Ma tui mau da ton tai trong kho",
+            });
+        }
+
+        const donorLink = await findDonorForBloodUnit({ donorName, bloodType });
+        const donationNumber = donorLink.donor?.donationHistory?.length
+            ? donorLink.donor.donationHistory.length + 1
+            : undefined;
 
         const unit = await Blood.create({
-            unitCode,
-            barcode: unitCode,
+            unitCode: normalizedUnitCode,
+            barcode: normalizedUnitCode,
             bloodType,
             bloodGroup: bloodType,
             quantity: Number(quantity),
             collectionDate,
             expiryDate,
             receivedAt: new Date(),
-            testSampleCode: normalizeOptionalText(testSampleCode) || `SMP-${unitCode}`,
+            testSampleCode: normalizeOptionalText(testSampleCode) || `SMP-${normalizedUnitCode}`,
+            qrPayload: normalizeOptionalText(qrPayload),
             sampleType: sampleType || "unknown",
             sampleCollectedAt: collectionDate,
             traceabilityVerified: true,
             intakeNote: normalizeOptionalText(intakeNote),
+            donor: donorLink.donor?._id,
+            donationNumber,
+            donorSnapshot: donorLink.donorSnapshot,
             hospital: labId,
             bloodLab: labId,
             componentType: "whole_blood",
@@ -427,7 +518,7 @@ export const createBloodUnit = async (req, res) => {
             $push: {
                 history: {
                     eventType: "Stock Update",
-                    description: ` Created blood unit ${unitCode} - ${bloodType} -${quantity}ml `,
+                    description: ` Created blood unit ${normalizedUnitCode} - ${bloodType} -${quantity}ml `,
                     date: new Date(),
                     referenceId: unit._id,
                 },
@@ -457,7 +548,9 @@ export const createBloodBatch = async (req, res) => {
             collectionDate,
             expiryDate,
             batchCode,
+            unitCodes,
             testSampleCodePrefix,
+            testSampleCode,
             sampleType,
             intakeNote,
         } = req.body || {};
@@ -498,6 +591,29 @@ export const createBloodBatch = async (req, res) => {
             .trim()
             .toUpperCase();
         const normalizedSamplePrefix = normalizeSamplePrefix(testSampleCodePrefix);
+        const normalizedUnitCodes = normalizeCodeList(unitCodes);
+        const normalizedTestSampleCode = normalizeLookupCode(testSampleCode);
+
+        if (normalizedUnitCodes.length > 0 && normalizedUnitCodes.length !== count) {
+            return res.status(400).json({
+                success: false,
+                message: "So ma tui tu QR phai khop voi so luong tui trong lo",
+            });
+        }
+
+        if (new Set(normalizedUnitCodes).size !== normalizedUnitCodes.length) {
+            return res.status(400).json({
+                success: false,
+                message: "Danh sach ma tui tu QR bi trung",
+            });
+        }
+
+        if (normalizedTestSampleCode && count !== 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Ma mau xet nghiem rieng chi dung khi nhap 1 tui",
+            });
+        }
 
         const existingBatch = await Blood.exists({
             ...labFilter(labId),
@@ -510,9 +626,25 @@ export const createBloodBatch = async (req, res) => {
             });
         }
 
+        if (normalizedUnitCodes.length > 0) {
+            const duplicatedUnit = await Blood.exists({
+                ...labFilter(labId),
+                $or: [
+                    { unitCode: { $in: normalizedUnitCodes } },
+                    { barcode: { $in: normalizedUnitCodes } },
+                ],
+            });
+            if (duplicatedUnit) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Ma tui tu QR da ton tai trong kho",
+                });
+            }
+        }
+
         const units = [];
         for (let index = 0; index < count; index += 1) {
-            const unitCode = await generateBloodStorageId({ facilityId: labId });
+            const unitCode = normalizedUnitCodes[index] || await generateBloodStorageId({ facilityId: labId });
             units.push({
                 unitCode,
                 barcode: unitCode,
@@ -524,9 +656,11 @@ export const createBloodBatch = async (req, res) => {
                 quantity: volume,
                 collectionDate,
                 expiryDate,
-                testSampleCode: normalizedSamplePrefix
-                    ? `${normalizedSamplePrefix}-${String(index + 1).padStart(3, "0")}`
-                    : `SMP-${unitCode}`,
+                testSampleCode: normalizedTestSampleCode && count === 1
+                    ? normalizedTestSampleCode
+                    : normalizedSamplePrefix
+                        ? `${normalizedSamplePrefix}-${String(index + 1).padStart(3, "0")}`
+                        : `SMP-${unitCode}`,
                 sampleType: sampleType || "unknown",
                 sampleCollectedAt: collectionDate,
                 traceabilityVerified: true,

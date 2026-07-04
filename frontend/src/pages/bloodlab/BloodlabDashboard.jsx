@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios"; // gui request tu frontend den backend
+import { useNavigate } from "react-router-dom";
 import {
 	Droplet,
 	Calendar,
@@ -21,49 +21,38 @@ import {
 	TrendingUp,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import axios from "axios";
 
-const API_URL = "http://localhost:5000/api/blood-lab"; // day la dia chi backend cua blood lab
+const BLOOD_LAB_API_URL = "http://localhost:5000/api/blood-lab";
+const bloodLabGet = (path, config) => axios.get(`${BLOOD_LAB_API_URL}${path}`, config);
 
 const BloodLabDashboard = () => {
+	const navigate = useNavigate();
 	const [dashboard, setDashboard] = useState(null);
 	const [stock, setStock] = useState([]);
 	const [lab, setLab] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 
+	const handleAuthFailure = () => {
+		localStorage.removeItem("token");
+		localStorage.removeItem("role");
+		navigate("/login", { replace: true });
+	};
+
 	const fetchDashboardData = async () => { // lấy dữ liệu từ backend
 		try {
 			const token = localStorage.getItem("token"); // lấy token từ localStorage để xác thực
 
 			if (!token) {
-				toast.error("Yêu cầu xác thực");
+				handleAuthFailure();
 				return;
 			}
 
-			const [dashboardRes, stockRes, profileRes] = await Promise.all([ // thực hiện 3 request song song để lấy dữ liệu dashboard, tồn kho máu và thông tin phòng xét nghiệm
-				axios
-					.get(`${API_URL}/dashboard`, { 
-						headers: { Authorization: `Bearer ${token}` }, 
-					})
-					.catch((err) => {
-						throw err;
-					}),
-				axios
-					.get(`${API_URL}/blood/stock`, {
-						headers: { Authorization: `Bearer ${token}` },
-					})
-					.catch((err) => {
-						throw err;
-					}),
-				axios
-					.get(`${API_URL}/history`, {
-						headers: { Authorization: `Bearer ${token}` },
-					})
-					.catch(() =>
-						axios.get(`${API_URL}/dashboard`, {
-							headers: { Authorization: `Bearer ${token}` },
-						}),
-					),
+			const headers = { Authorization: `Bearer ${token}` };
+			const [dashboardRes, stockRes] = await Promise.all([
+				bloodLabGet("/dashboard", { headers }),
+				bloodLabGet("/blood/stock", { headers }),
 			]);
 
 			setDashboard(dashboardRes.data);
@@ -79,12 +68,7 @@ const BloodLabDashboard = () => {
 			setStock(stockData);
 
 			const facilityProfile = dashboardRes.data.facility || {};
-			let historyData = [];
-			if (profileRes.data.activity) {
-				historyData = profileRes.data.activity;
-			} else {
-				historyData = facilityProfile.history || [];
-			}
+			const historyData = facilityProfile.history || [];
 
 			setLab({
 				...facilityProfile,
@@ -92,6 +76,10 @@ const BloodLabDashboard = () => {
 			});
 		} catch (error) {
 			console.error("Lỗi Dashboard:", error);
+			if (error.response?.status === 401 || error.response?.status === 403) {
+				handleAuthFailure();
+				return;
+			}
 			const message = error.response?.data?.message || "Không thể tải dữ liệu bảng điều khiển";
 			toast.error(message);
 		}
@@ -174,9 +162,8 @@ const BloodLabDashboard = () => {
 							Tổng Quan Phòng Xét Nghiệm
 						</h2>
 						<span
-							className={`px-3 py-1 rounded-full text-sm font-medium ${
-								lab.status === "approved" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-							}`}>
+							className={`px-3 py-1 rounded-full text-sm font-medium ${lab.status === "approved" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+								}`}>
 							{lab.status === "approved"
 								? "Đã Duyệt"
 								: lab.status?.charAt(0).toUpperCase() + lab.status?.slice(1)}
@@ -333,9 +320,8 @@ const MetricCard = ({ icon, label, value, subtitle, trend, color, alert = false 
 
 	return (
 		<div
-			className={`bg-white rounded-xl shadow-lg border-l-4 ${
-				alert ? "border-l-red-400" : colors.border
-			} p-5 relative overflow-hidden`}>
+			className={`bg-white rounded-xl shadow-lg border-l-4 ${alert ? "border-l-red-400" : colors.border
+				} p-5 relative overflow-hidden`}>
 			<div className="flex items-center justify-between">
 				<div>
 					<p className="text-sm font-medium text-gray-600 mb-1">{label}</p>
@@ -345,9 +331,8 @@ const MetricCard = ({ icon, label, value, subtitle, trend, color, alert = false 
 					)}
 				</div>
 				<div
-					className={`p-3 rounded-lg ${
-						alert ? "bg-red-100 text-red-600" : `${colors.bg} ${colors.text}`
-					}`}>
+					className={`p-3 rounded-lg ${alert ? "bg-red-100 text-red-600" : `${colors.bg} ${colors.text}`
+						}`}>
 					{icon}
 				</div>
 			</div>
@@ -412,13 +397,12 @@ const CampCard = ({ camp }) => (
 		</div>
 		<div className="text-right">
 			<span
-				className={`px-3 py-1 rounded-full text-xs font-medium ${
-					camp.status === "Upcoming"
+				className={`px-3 py-1 rounded-full text-xs font-medium ${camp.status === "Upcoming"
 						? "bg-yellow-100 text-yellow-700"
 						: camp.status === "Completed"
 							? "bg-green-100 text-green-700"
 							: "bg-gray-100 text-gray-600"
-				}`}>
+					}`}>
 				{camp.status === "Upcoming"
 					? "Sắp Diễn Ra"
 					: camp.status === "Completed"

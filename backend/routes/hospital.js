@@ -8,18 +8,18 @@ const router = express.Router();
 router.get("/hospital/blood", authenticate, authorize("hospital", "admin"), async (req, res) => {
   try {
     const { page = 1, limit = 10, status, bloodType } = req.query;
-    
+
     const filter = { hospital: req.user.id };
     if (status) filter.status = status;
     if (bloodType) filter.bloodType = bloodType;
-    
+
     const bloodUnits = await Blood.find(filter)
       .sort({ collectionDate: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
-    
+
     const total = await Blood.countDocuments(filter);
-    
+
     res.json({
       success: true,
       bloodUnits,
@@ -29,9 +29,9 @@ router.get("/hospital/blood", authenticate, authorize("hospital", "admin"), asyn
     });
   } catch (error) {
     console.error("Get blood units error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error while fetching blood units" 
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching blood units"
     });
   }
 });
@@ -40,12 +40,12 @@ router.get("/hospital/blood", authenticate, authorize("hospital", "admin"), asyn
 router.get("/hospital/blood/inventory", authenticate, authorize("hospital", "admin"), async (req, res) => {
   try {
     const inventory = await Blood.aggregate([
-      { 
-        $match: { 
-          hospital: req.user._id, 
+      {
+        $match: {
+          hospital: req.user._id,
           status: "available",
-          expirationDate: { $gt: new Date() }
-        } 
+          expiryDate: { $gt: new Date() }
+        }
       },
       {
         $group: {
@@ -56,16 +56,16 @@ router.get("/hospital/blood/inventory", authenticate, authorize("hospital", "adm
       },
       { $sort: { _id: 1 } }
     ]);
-    
+
     res.json({
       success: true,
       inventory
     });
   } catch (error) {
     console.error("Get inventory error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error while fetching inventory" 
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching inventory"
     });
   }
 });
@@ -74,22 +74,22 @@ router.get("/hospital/blood/inventory", authenticate, authorize("hospital", "adm
 router.post("/hospital/blood", authenticate, authorize("hospital", "admin"), async (req, res) => {
   try {
     const { bloodType, quantity, collectionDate } = req.body;
-    
+
     // Validation
     if (!bloodType || !quantity) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Blood type and quantity are required" 
+      return res.status(400).json({
+        success: false,
+        message: "Blood type and quantity are required"
       });
     }
-    
+
     if (quantity <= 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Quantity must be greater than 0" 
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be greater than 0"
       });
     }
-    
+
     const bloodUnit = new Blood({
       bloodType,
       quantity,
@@ -97,9 +97,9 @@ router.post("/hospital/blood", authenticate, authorize("hospital", "admin"), asy
       hospital: req.user.id,
       status: "available"
     });
-    
+
     await bloodUnit.save();
-    
+
     res.status(201).json({
       success: true,
       message: "Blood unit added successfully",
@@ -107,18 +107,18 @@ router.post("/hospital/blood", authenticate, authorize("hospital", "admin"), asy
     });
   } catch (error) {
     console.error("Add blood unit error:", error);
-    
+
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map(val => val.message);
-      return res.status(400).json({ 
-        success: false, 
-        message: messages.join(", ") 
+      return res.status(400).json({
+        success: false,
+        message: messages.join(", ")
       });
     }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error while adding blood unit" 
+
+    res.status(500).json({
+      success: false,
+      message: "Server error while adding blood unit"
     });
   }
 });
@@ -128,19 +128,19 @@ router.put("/hospital/blood/:id", authenticate, authorize("hospital", "admin"), 
   try {
     const { id } = req.params;
     const { bloodType, quantity, status, collectionDate } = req.body;
-    
-    const bloodUnit = await Blood.findOne({ 
-      _id: id, 
-      hospital: req.user.id 
+
+    const bloodUnit = await Blood.findOne({
+      _id: id,
+      hospital: req.user.id
     });
-    
+
     if (!bloodUnit) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Blood unit not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Blood unit not found"
       });
     }
-    
+
     // Update fields if provided
     if (bloodType) bloodUnit.bloodType = bloodType;
     if (quantity) bloodUnit.quantity = quantity;
@@ -148,11 +148,11 @@ router.put("/hospital/blood/:id", authenticate, authorize("hospital", "admin"), 
     if (collectionDate) {
       bloodUnit.collectionDate = collectionDate;
       // Reset expiration date (will be recalculated in pre-save)
-      bloodUnit.expirationDate = undefined;
+      bloodUnit.expiryDate = undefined;
     }
-    
+
     await bloodUnit.save();
-    
+
     res.json({
       success: true,
       message: "Blood unit updated successfully",
@@ -160,18 +160,18 @@ router.put("/hospital/blood/:id", authenticate, authorize("hospital", "admin"), 
     });
   } catch (error) {
     console.error("Update blood unit error:", error);
-    
+
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map(val => val.message);
-      return res.status(400).json({ 
-        success: false, 
-        message: messages.join(", ") 
+      return res.status(400).json({
+        success: false,
+        message: messages.join(", ")
       });
     }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error while updating blood unit" 
+
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating blood unit"
     });
   }
 });
@@ -180,28 +180,28 @@ router.put("/hospital/blood/:id", authenticate, authorize("hospital", "admin"), 
 router.delete("/hospital/blood/:id", authenticate, authorize("hospital", "admin"), async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const bloodUnit = await Blood.findOneAndDelete({ 
-      _id: id, 
-      hospital: req.user.id 
+
+    const bloodUnit = await Blood.findOneAndDelete({
+      _id: id,
+      hospital: req.user.id
     });
-    
+
     if (!bloodUnit) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Blood unit not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Blood unit not found"
       });
     }
-    
+
     res.json({
       success: true,
       message: "Blood unit deleted successfully"
     });
   } catch (error) {
     console.error("Delete blood unit error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error while deleting blood unit" 
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting blood unit"
     });
   }
 });
@@ -211,9 +211,9 @@ router.get("/hospital/blood/expired", authenticate, authorize("hospital", "admin
   try {
     const expiredBlood = await Blood.find({
       hospital: req.user.id,
-      expirationDate: { $lt: new Date() }
-    }).sort({ expirationDate: 1 });
-    
+      expiryDate: { $lt: new Date() }
+    }).sort({ expiryDate: 1 });
+
     res.json({
       success: true,
       expiredBlood,
@@ -221,9 +221,9 @@ router.get("/hospital/blood/expired", authenticate, authorize("hospital", "admin
     });
   } catch (error) {
     console.error("Get expired blood error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error while fetching expired blood" 
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching expired blood"
     });
   }
 });
@@ -233,44 +233,44 @@ router.patch("/hospital/blood/:id/use", authenticate, authorize("hospital", "adm
   try {
     const { id } = req.params;
     const { usedQuantity } = req.body;
-    
-    const bloodUnit = await Blood.findOne({ 
-      _id: id, 
-      hospital: req.user.id 
+
+    const bloodUnit = await Blood.findOne({
+      _id: id,
+      hospital: req.user.id
     });
-    
+
     if (!bloodUnit) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Blood unit not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Blood unit not found"
       });
     }
-    
+
     if (bloodUnit.status !== "available") {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Only available blood can be used" 
+      return res.status(400).json({
+        success: false,
+        message: "Only available blood can be used"
       });
     }
-    
+
     if (bloodUnit.isExpired) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Expired blood cannot be used" 
+      return res.status(400).json({
+        success: false,
+        message: "Expired blood cannot be used"
       });
     }
-    
+
     if (usedQuantity) {
       if (usedQuantity > bloodUnit.quantity) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Used quantity cannot exceed available quantity" 
+        return res.status(400).json({
+          success: false,
+          message: "Used quantity cannot exceed available quantity"
         });
       }
-      
+
       // Partial usage
       bloodUnit.quantity -= usedQuantity;
-      
+
       if (bloodUnit.quantity === 0) {
         bloodUnit.status = "used";
       }
@@ -278,9 +278,9 @@ router.patch("/hospital/blood/:id/use", authenticate, authorize("hospital", "adm
       // Full usage
       bloodUnit.status = "used";
     }
-    
+
     await bloodUnit.save();
-    
+
     res.json({
       success: true,
       message: `Blood unit ${usedQuantity ? 'partially' : 'fully'} used successfully`,
@@ -288,9 +288,9 @@ router.patch("/hospital/blood/:id/use", authenticate, authorize("hospital", "adm
     });
   } catch (error) {
     console.error("Use blood error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error while using blood" 
+    res.status(500).json({
+      success: false,
+      message: "Server error while using blood"
     });
   }
 });

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { toast } from "react-hot-toast";
 import { CheckCircle, XCircle, Clock, MapPin, Phone, Package, Truck } from "lucide-react";
+import axios from "axios";
+
+const BLOOD_LAB_API_URL = "http://localhost:5000/api/blood-lab";
+const bloodLabGet = (path, config) => axios.get(`${BLOOD_LAB_API_URL}${path}`, config);
+const bloodLabPut = (path, data, config) => axios.put(`${BLOOD_LAB_API_URL}${path}`, data, config);
+const bloodLabPatch = (path, data, config) => axios.patch(`${BLOOD_LAB_API_URL}${path}`, data, config);
 
 const LabManageRequests = () => {
 	const [requests, setRequests] = useState([]);
@@ -11,7 +16,7 @@ const LabManageRequests = () => {
 		try {
 			setLoading(true);
 			const token = localStorage.getItem("token");
-			const res = await axios.get("http://localhost:5000/api/blood-lab/blood/requests", {
+			const res = await bloodLabGet("/blood/requests", {
 				headers: { Authorization: `Bearer ${token}` },
 			});
 			setRequests(res.data.requests || []);
@@ -31,8 +36,8 @@ const LabManageRequests = () => {
 		try {
 			const token = localStorage.getItem("token");
 
-			await axios.put(
-				`http://localhost:5000/api/blood-lab/blood/requests/${id}`,
+			await bloodLabPut(
+				`/blood/requests/${id}`,
 				{ action },
 				{ headers: { Authorization: `Bearer ${token}` } },
 			);
@@ -59,16 +64,18 @@ const LabManageRequests = () => {
 	const updateHandover = async (id, handoverStatus) => {
 		try {
 			const token = localStorage.getItem("token");
-			await axios.patch(
-				`http://localhost:5000/api/blood-lab/blood/requests/${id}/handover`,
-				{ handoverStatus },
-				{ headers: { Authorization: `Bearer ${token}` } },
-			);
-			toast.success("Đã cập nhật trạng thái bàn giao");
+			const res = await bloodLabPatch(`/blood/requests/${id}/handover`, { handoverStatus }, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (res.data?.success) {
+				toast.success("Đã cập nhật trạng thái bàn giao");
+			} else {
+				throw new Error(res.data?.message || "Không thể cập nhật bàn giao");
+			}
 			loadRequests();
 		} catch (err) {
 			console.error("Lỗi cập nhật bàn giao:", err);
-			toast.error(err.response?.data?.message || "Không thể cập nhật bàn giao");
+			toast.error(err.response?.data?.message || err.message || "Không thể cập nhật bàn giao");
 		}
 	};
 

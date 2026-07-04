@@ -147,16 +147,7 @@ export const login = async (req, res) => {
  */
 export const getProfile = async (req, res) => {
 	try {
-		let user;
-		if (req.user.role === "donor") {
-			user = await Donor.findById(req.user.id).select("-password");
-		} else if (req.user.role === "admin" || req.user.role === "superadmin") {
-			user = await Admin.findById(req.user.id).select("-password");
-		} else if (req.user.role === "lab_staff") {
-			user = await LabStaff.findById(req.user.id).select("-password");
-		} else {
-			user = await Facility.findById(req.user.id).select("-password");
-		}
+		let user = req.authUser;
 
 		if (!user) return res.status(404).json({ message: "User not found" });
 

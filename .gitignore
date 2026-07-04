@@ -26,6 +26,11 @@ dist-ssr
 # Environment Variables
 .env
 
+# Python runtime files
+__pycache__/
+*.py[cod]
+python-service/data/
+
 # Mobile app (React Native)
 BBMSDonorApp/node_modules/
 BBMSDonorApp/.expo/

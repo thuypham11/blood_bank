@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+# Tên collection giữ gần với Mongoose/MongoDB của backend Node.js gốc.
+ADMINS = "admins"
+AUDIT_LOGS = "auditlogs"
+BARCODE_SEQUENCES = "barcodesequences"
+BLOOD_CAMPS = "bloodcamps"
+BLOODS = "bloods"
+BLOOD_REQUESTS = "bloodrequests"
+BLOOD_UNITS = "bloodunits"
+CAMPS = "camps"
+DONATION_APPOINTMENTS = "donationappointments"
+DONATION_SESSIONS = "donationsessions"
+DONORS = "donors"
+FACILITIES = "facilities"
+HEALTH_DECLARATIONS = "healthdeclarations"
+LAB_STAFFS = "labstaffs"
+LAB_TEST_RESULTS = "labtestresults"
+NOTIFICATIONS = "notifications"
+OTPS = "otps"
+STAFFS = "staffs"
+USERS = "users"

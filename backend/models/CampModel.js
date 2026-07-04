@@ -65,7 +65,7 @@ campSchema.pre("save", function (next) {
     if (this.date && !this.enddate) {
         const expiration = new Date(this.collectionDate);
         expiration.setDate(expiration.getDate() + 42);
-        this.expirationDate = expiration;
+        this.expiryDate = expiration;
     }
     next();
 });

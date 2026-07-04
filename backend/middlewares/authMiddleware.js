@@ -5,6 +5,15 @@ import Admin from "../models/adminModel.js";
 import Facility from "../models/facilityModel.js";
 import LabStaff from "../models/LabStaff.js";
 
+const modelByRole = {
+  donor: Donor,
+  admin: Admin,
+  superadmin: Admin,
+  hospital: Facility,
+  "blood-lab": Facility,
+  lab_staff: LabStaff,
+};
+
 export const protect = async (req, res, next) => {
   let token;
 
@@ -15,17 +24,19 @@ export const protect = async (req, res, next) => {
     try {
       token = req.headers.authorization.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const UserModel = modelByRole[decoded.role];
 
-      let user =
-        (await Donor.findById(decoded.id).select("-password")) ||
-        (await Admin.findById(decoded.id).select("-password")) ||
-        (await Facility.findById(decoded.id).select("-password")) ||
-        (await LabStaff.findById(decoded.id).select("-password"));
+      if (!UserModel) {
+        return res.status(401).json({ message: "Token role is not supported" });
+      }
+
+      const user = await UserModel.findById(decoded.id).select("-password");
 
       if (!user)
         return res.status(401).json({ message: "User not found or unauthorized" });
 
       req.user = { id: user._id, role: decoded.role };
+      req.authUser = user;
       next();
     } catch (error) {
       console.error("Auth middleware error:", error);

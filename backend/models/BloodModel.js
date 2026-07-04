@@ -35,6 +35,7 @@ const bloodSchema = new mongoose.Schema(
     expirationDate: Date,
 
     testSampleCode: { type: String, trim: true, index: true },
+    qrPayload: { type: String, trim: true },
     sampleType: {
       type: String,
       enum: ["serum", "plasma", "whole_blood", "unknown"],

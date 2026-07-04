@@ -1,0 +1,35 @@
+from __future__ import annotations
+
+from fastapi import APIRouter
+from app.controllers import blood_lab_controller as controller
+
+router = APIRouter(prefix='/api/blood-lab', tags=["blood-lab"])
+
+router.add_api_route("/dashboard", endpoint=controller.dashboard, methods=["GET"])
+router.add_api_route("/history", endpoint=controller.history, methods=["GET"])
+router.add_api_route("/staff", endpoint=controller.get_staff, methods=["GET"])
+router.add_api_route("/staff", endpoint=controller.create_staff, methods=["POST"])
+router.add_api_route("/staff/{id}", endpoint=controller.update_staff, methods=["PATCH"])
+router.add_api_route("/blood/stock", endpoint=controller.stock, methods=["GET"])
+router.add_api_route("/blood/units", endpoint=controller.blood_units, methods=["GET"])
+router.add_api_route("/blood/units", endpoint=controller.create_unit, methods=["POST"])
+router.add_api_route("/blood/units/batch", endpoint=controller.create_batch, methods=["POST"])
+router.add_api_route("/blood/units/barcode/{barcode}", endpoint=controller.by_barcode, methods=["GET"])
+router.add_api_route("/blood/units/{id}/code", endpoint=controller.unit_code_image, methods=["GET"])
+router.add_api_route("/blood/units/{id}/components", endpoint=controller.split_components, methods=["POST"])
+router.add_api_route("/blood/units/issue", endpoint=controller.issue_units, methods=["PATCH"])
+router.add_api_route("/blood/units/{id}/screening", endpoint=controller.screening, methods=["PATCH"])
+router.add_api_route("/blood/units/{id}/import", endpoint=controller.import_unit, methods=["PATCH"])
+router.add_api_route("/blood/units/{id}/discard", endpoint=controller.discard, methods=["PATCH"])
+router.add_api_route("/blood/batches/{batchCode}/screening", endpoint=controller.batch_screening, methods=["PATCH"])
+router.add_api_route("/blood/batches/{batchCode}/screening/import-csv", endpoint=controller.batch_screening_csv, methods=["POST"])
+router.add_api_route("/blood/batches/{batchCode}/import", endpoint=controller.import_batch, methods=["PATCH"])
+router.add_api_route("/blood/requests", endpoint=controller.requests, methods=["GET"])
+router.add_api_route("/blood/requests/{id}", endpoint=controller.request_status, methods=["PUT"])
+router.add_api_route("/blood/requests/{id}/handover", endpoint=controller.handover, methods=["PATCH"])
+router.add_api_route("/donor/search", endpoint=controller.donor_search, methods=["GET"])
+router.add_api_route("/donors/search", endpoint=controller.donor_search, methods=["GET"])
+router.add_api_route("/donor/donate/{id}", endpoint=controller.mark_donation, methods=["POST"])
+router.add_api_route("/donors/donate/{id}", endpoint=controller.mark_donation, methods=["POST"])
+router.add_api_route("/donations/recent", endpoint=controller.recent_donations, methods=["GET"])
+router.add_api_route("/labs", endpoint=controller.labs, methods=["GET"])

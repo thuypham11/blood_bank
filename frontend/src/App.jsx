@@ -1,51 +1,59 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
-import Login from "./pages/auth/Login";
-import LandingPage from "./pages/Landing";
-import Register from "./pages/auth/Register";
-import FacilityForm from "./pages/auth/FacilityRegister";
-import DonorRegister from "./pages/auth/DonorRegister";
-import DonorDashboard from "./pages/donor/DonorDashboard";
-import ProtectedRoute from "./components/ProtectedRoute";
-import DashboardLayout from "./components/layouts/DashboardLayout";
-import DonorProfile from "./pages/donor/DonorProfile";
-import DonorTestResults from "./pages/donor/DonorTestResults";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminFacilities from "./pages/admin/AdminFacilities";
-import HospitalDashboard from "./pages/hospital/HospitalDashboard";
-import BloodCamps from "./pages/bloodlab/BloodCamps";
-import BloodlabDashboard from "./pages/bloodlab/BloodlabDashboard";
-import BloodStock from "./pages/bloodlab/BloodStock";
-import LabProfile from "./pages/bloodlab/LabProfile";
-import LabStaffWorkspace from "./pages/bloodlab/LabStaffWorkspace";
-import GetAllFacilities from "./pages/admin/GetAllFacilities";
-import GetAllDonors from "./pages/admin/GetAllDonors";
-import AdminProfile from "./pages/admin/AdminProfile";
-import AdminUsers from "./pages/admin/AdminUsers";
-import AdminBloodRequests from "./pages/admin/AdminBloodRequests";
-import AdminBloodStock from "./pages/admin/AdminBloodStock";
-import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
-import AdminReports from "./pages/admin/AdminReports";
-import AdminBloodCamps from "./pages/admin/AdminBloodCamps";
-import AdminNotifications from "./pages/admin/AdminNotifications";
-import AdminSettings from "./pages/admin/AdminSettings";
-import DonorCampsList from "./pages/donor/DonorCampsList";
-import LabManageRequests from "./pages/bloodlab/LabManageRequests";
-import HospitalRequestBlood from "./pages/hospital/HospitalRequestBlood";
-import HospitalRequestHistory from "./pages/hospital/HospitalRequestHistory";
-import HospitalBloodStock from "./pages/hospital/HospitalBloodStock";
-import BloodLabDonor from "./pages/bloodlab/BloodLabDonor";
-import DonorDirectory from "./pages/hospital/DonorDirectory";
-import About from "./components/about/About";
-import Contact from "./components/contact/Contact";
-import DonorDonationHistory from "./pages/donor/DonorDonationHistory";
-import BookDonation from "./pages/donor/BookDonation";
-import MyAppointments from "./pages/donor/MyAppointments";
-import StaffDashboard from './pages/staff/StaffDashboard';
-import StaffQueue from './pages/staff/StaffQueue';
-import StaffLogin from './pages/staff/StaffLogin';
+
+const Login = lazy(() => import("./pages/auth/Login"));
+const LandingPage = lazy(() => import("./pages/Landing"));
+const Register = lazy(() => import("./pages/auth/Register"));
+const FacilityForm = lazy(() => import("./pages/auth/FacilityRegister"));
+const DonorRegister = lazy(() => import("./pages/auth/DonorRegister"));
+const DonorDashboard = lazy(() => import("./pages/donor/DonorDashboard"));
+const ProtectedRoute = lazy(() => import("./components/ProtectedRoute"));
+const DashboardLayout = lazy(() => import("./components/layouts/DashboardLayout"));
+const DonorProfile = lazy(() => import("./pages/donor/DonorProfile"));
+const DonorTestResults = lazy(() => import("./pages/donor/DonorTestResults"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminFacilities = lazy(() => import("./pages/admin/AdminFacilities"));
+const HospitalDashboard = lazy(() => import("./pages/hospital/HospitalDashboard"));
+const BloodlabDashboard = lazy(() => import("./pages/bloodlab/BloodlabDashboard"));
+const BloodStock = lazy(() => import("./pages/bloodlab/BloodStock"));
+const LabProfile = lazy(() => import("./pages/bloodlab/LabProfile"));
+const LabStaffWorkspace = lazy(() => import("./pages/bloodlab/LabStaffWorkspace"));
+const GetAllFacilities = lazy(() => import("./pages/admin/GetAllFacilities"));
+const GetAllDonors = lazy(() => import("./pages/admin/GetAllDonors"));
+const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminBloodRequests = lazy(() => import("./pages/admin/AdminBloodRequests"));
+const AdminBloodStock = lazy(() => import("./pages/admin/AdminBloodStock"));
+const AdminAuditLogs = lazy(() => import("./pages/admin/AdminAuditLogs"));
+const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
+const AdminBloodCamps = lazy(() => import("./pages/admin/AdminBloodCamps"));
+const AdminNotifications = lazy(() => import("./pages/admin/AdminNotifications"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const DonorCampsList = lazy(() => import("./pages/donor/DonorCampsList"));
+const LabManageRequests = lazy(() => import("./pages/bloodlab/LabManageRequests"));
+const HospitalRequestBlood = lazy(() => import("./pages/hospital/HospitalRequestBlood"));
+const HospitalRequestHistory = lazy(() => import("./pages/hospital/HospitalRequestHistory"));
+const HospitalBloodStock = lazy(() => import("./pages/hospital/HospitalBloodStock"));
+const BloodLabDonor = lazy(() => import("./pages/bloodlab/BloodLabDonor"));
+const DonorDirectory = lazy(() => import("./pages/hospital/DonorDirectory"));
+const About = lazy(() => import("./components/about/About"));
+const Contact = lazy(() => import("./components/contact/Contact"));
+const DonorDonationHistory = lazy(() => import("./pages/donor/DonorDonationHistory"));
+const BookDonation = lazy(() => import("./pages/donor/BookDonation"));
+const MyAppointments = lazy(() => import("./pages/donor/MyAppointments"));
+const StaffDashboard = lazy(() => import("./pages/staff/StaffDashboard"));
+const StaffQueue = lazy(() => import("./pages/staff/StaffQueue"));
+const StaffLogin = lazy(() => import("./pages/staff/StaffLogin"));
+
+const PageFallback = () => (
+	<div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-700 font-semibold">
+		Đang tải...
+	</div>
+);
 
 function App() {
 	return (
+		<Suspense fallback={<PageFallback />}>
 		<Routes>
 			
 			{/* Public Routes */}
@@ -135,6 +143,7 @@ function App() {
 			{/* Fallback — redirect về trang chủ nếu route không tồn tại */}
 			<Route path="*" element={<LandingPage />} />
 		</Routes>
+		</Suspense>
 	);
 }
 

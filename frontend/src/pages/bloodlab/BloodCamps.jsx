@@ -16,6 +16,14 @@ import {
 	MoreVertical,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import axios from "axios";
+
+const BLOOD_LAB_API_URL = "http://localhost:5000/api/blood-lab";
+const bloodLabGet = (path, config) => axios.get(`${BLOOD_LAB_API_URL}${path}`, config);
+const bloodLabPost = (path, data, config) => axios.post(`${BLOOD_LAB_API_URL}${path}`, data, config);
+const bloodLabPut = (path, data, config) => axios.put(`${BLOOD_LAB_API_URL}${path}`, data, config);
+const bloodLabPatch = (path, data, config) => axios.patch(`${BLOOD_LAB_API_URL}${path}`, data, config);
+const bloodLabDelete = (path, config) => axios.delete(`${BLOOD_LAB_API_URL}${path}`, config);
 
 const BloodCamps = () => {
 	const [camps, setCamps] = useState([]);
@@ -61,7 +69,6 @@ const BloodCamps = () => {
 	const [actionMenu, setActionMenu] = useState(null);
 
 	const token = localStorage.getItem("token");
-	const API_URL = "http://localhost:5000/api/blood-lab";
 
 	// Tính toán thống kê từ dữ liệu chiến dịch
 	const calculateStats = (campsData) => {
@@ -118,27 +125,14 @@ const BloodCamps = () => {
 				...(filters.search && { search: filters.search }),
 			});
 
-			const url = `${API_URL}/camps?${queryParams}`;
-
-			const res = await fetch(url, {
+			const res = await bloodLabGet(`/camps?${queryParams}`, {
 				headers: {
 					Authorization: `Bearer ${token}`,
 					"Content-Type": "application/json",
 				},
 			});
 
-			const contentType = res.headers.get("content-type");
-			if (!contentType || !contentType.includes("application/json")) {
-				const text = await res.text();
-				throw new Error("Máy chủ trả về HTML thay vì JSON. Kiểm tra lại API endpoint.");
-			}
-
-			if (!res.ok) {
-				const errorData = await res.json();
-				throw new Error(errorData.message || `Không thể tải chiến dịch: ${res.status}`);
-			}
-
-			const data = await res.json();
+			const data = res.data;
 
 			if (data.success) {
 				const campsData = data.data?.camps || data.camps || [];
@@ -147,13 +141,13 @@ const BloodCamps = () => {
 				setCamps(campsData);
 				setPagination(
 					data.data?.pagination ||
-						data.pagination || {
-							currentPage: 1,
-							totalPages: 1,
-							totalCamps: 0,
-							hasNext: false,
-							hasPrev: false,
-						},
+					data.pagination || {
+						currentPage: 1,
+						totalPages: 1,
+						totalCamps: 0,
+						hasNext: false,
+						hasPrev: false,
+					},
 				);
 				setStats(calculatedStats);
 			} else {
@@ -173,50 +167,28 @@ const BloodCamps = () => {
 	// Cập nhật trạng thái chiến dịch
 	const updateCampStatus = async (campId, newStatus) => {
 		try {
-			const endpoints = [`${API_URL}/camps/${campId}/status`, `${API_URL}/camps/${campId}`];
+			const payload = { status: newStatus };
+			const res = await bloodLabPatch(`/camps/${campId}/status`, payload, {
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`,
+				},
+			});
 
-			let lastError = null;
-
-			for (const url of endpoints) {
-				try {
-					const payload = { status: newStatus };
-					const res = await fetch(url, {
-						method: "PATCH",
-						headers: {
-							"Content-Type": "application/json",
-							Authorization: `Bearer ${token}`,
-						},
-						body: JSON.stringify(payload),
-					});
-
-					const contentType = res.headers.get("content-type");
-					if (!contentType || !contentType.includes("application/json")) {
-						continue;
-					}
-
-					const data = await res.json();
-
-					if (res.ok && data.success) {
-						const statusLabels = {
-							Upcoming: "Sắp Diễn Ra",
-							Ongoing: "Đang Diễn Ra",
-							Completed: "Đã Hoàn Thành",
-							Cancelled: "Đã Hủy",
-						};
-						toast.success(`Chiến dịch đã được đánh dấu là ${statusLabels[newStatus] || newStatus}!`);
-						setActionMenu(null);
-						fetchCamps();
-						return;
-					} else {
-						lastError = new Error(data.message || "Không thể cập nhật trạng thái");
-					}
-				} catch (err) {
-					lastError = err;
-				}
+			const data = res.data;
+			if (data.success) {
+				const statusLabels = {
+					Upcoming: "Sắp Diễn Ra",
+					Ongoing: "Đang Diễn Ra",
+					Completed: "Đã Hoàn Thành",
+					Cancelled: "Đã Hủy",
+				};
+				toast.success(`Chiến dịch đã được đánh dấu là ${statusLabels[newStatus] || newStatus}!`);
+				setActionMenu(null);
+				fetchCamps();
+			} else {
+				throw new Error(data.message || "Không thể cập nhật trạng thái");
 			}
-
-			if (lastError) throw lastError;
-			else throw new Error("Không tìm thấy endpoint hợp lệ để cập nhật trạng thái");
 		} catch (err) {
 			console.error("Lỗi cập nhật trạng thái:", err);
 			toast.error(err.message || "Lỗi khi cập nhật trạng thái chiến dịch");
@@ -258,67 +230,48 @@ const BloodCamps = () => {
 		}
 
 		try {
-			const baseUrls = [`${API_URL}/camps`];
-			let lastError = null;
+			const payload = {
+				title: formData.title.trim(),
+				description: formData.description.trim(),
+				date: formData.date,
+				time: {
+					start: formData.startTime,
+					end: formData.endTime,
+				},
+				location: {
+					venue: formData.venue.trim(),
+					city: formData.city.trim(),
+					state: formData.state.trim(),
+					pincode: formData.pincode,
+				},
+				expectedDonors: Number(formData.expectedDonors),
+			};
 
-			for (const baseUrl of baseUrls) {
-				const url = editingCamp ? `${baseUrl}/${editingCamp._id}` : baseUrl;
-				const method = editingCamp ? "PUT" : "POST";
-
-				const payload = {
-					title: formData.title.trim(),
-					description: formData.description.trim(),
-					date: formData.date,
-					time: {
-						start: formData.startTime,
-						end: formData.endTime,
+			const res = editingCamp
+				? await bloodLabPut(`/camps/${editingCamp._id}`, payload, {
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${token}`,
 					},
-					location: {
-						venue: formData.venue.trim(),
-						city: formData.city.trim(),
-						state: formData.state.trim(),
-						pincode: formData.pincode,
+				})
+				: await bloodLabPost("/camps", payload, {
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${token}`,
 					},
-					expectedDonors: Number(formData.expectedDonors),
-				};
+				});
 
-				try {
-					const res = await fetch(url, {
-						method,
-						headers: {
-							"Content-Type": "application/json",
-							Authorization: `Bearer ${token}`,
-						},
-						body: JSON.stringify(payload),
-					});
-
-					const contentType = res.headers.get("content-type");
-					if (!contentType || !contentType.includes("application/json")) {
-						continue;
-					}
-
-					const data = await res.json();
-
-					if (res.ok && data.success) {
-						toast.success(
-							`Chiến Dịch Hiến Máu ${editingCamp ? "Đã Được Cập Nhật" : "Đã Được Tạo"} Thành Công!`,
-						);
-						resetForm();
-						setShowForm(false);
-						fetchCamps();
-						return;
-					} else {
-						lastError = new Error(
-							data.message || `Không thể ${editingCamp ? "cập nhật" : "tạo"} chiến dịch`,
-						);
-					}
-				} catch (err) {
-					lastError = err;
-				}
+			const data = res.data;
+			if (data.success) {
+				toast.success(
+					`Chiến Dịch Hiến Máu ${editingCamp ? "Đã Được Cập Nhật" : "Đã Được Tạo"} Thành Công!`,
+				);
+				resetForm();
+				setShowForm(false);
+				fetchCamps();
+				return;
 			}
-
-			if (lastError) throw lastError;
-			else throw new Error("Không tìm thấy endpoint hợp lệ");
+			throw new Error(data.message || `Không thể ${editingCamp ? "cập nhật" : "tạo"} chiến dịch`);
 		} catch (err) {
 			console.error("Lỗi gửi form:", err);
 			toast.error(err.message || `Lỗi khi ${editingCamp ? "cập nhật" : "tạo"} chiến dịch`);
@@ -354,40 +307,20 @@ const BloodCamps = () => {
 			return;
 
 		try {
-			const endpoints = [`${API_URL}/camps/${id}`];
-			let lastError = null;
+			const res = await bloodLabDelete(`/camps/${id}`, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+			});
 
-			for (const url of endpoints) {
-				try {
-					const res = await fetch(url, {
-						method: "DELETE",
-						headers: {
-							Authorization: `Bearer ${token}`,
-							"Content-Type": "application/json",
-						},
-					});
-
-					const contentType = res.headers.get("content-type");
-					if (!contentType || !contentType.includes("application/json")) {
-						continue;
-					}
-
-					const data = await res.json();
-
-					if (res.ok && data.success) {
-						toast.success("Đã xóa chiến dịch thành công!");
-						fetchCamps();
-						return;
-					} else {
-						lastError = new Error(data.message || "Không thể xóa chiến dịch");
-					}
-				} catch (err) {
-					lastError = err;
-				}
+			const data = res.data;
+			if (data.success) {
+				toast.success("Đã xóa chiến dịch thành công!");
+				fetchCamps();
+				return;
 			}
-
-			if (lastError) throw lastError;
-			else throw new Error("Không tìm thấy endpoint hợp lệ để xóa");
+			throw new Error(data.message || "Không thể xóa chiến dịch");
 		} catch (err) {
 			console.error("Lỗi xóa chiến dịch:", err);
 			toast.error(err.message || "Lỗi khi xóa chiến dịch");
@@ -582,9 +515,8 @@ const BloodCamps = () => {
 									type="text"
 									value={formData.title}
 									onChange={(e) => handleInputChange("title", e.target.value)}
-									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-										errors.title ? "border-red-500" : ""
-									}`}
+									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.title ? "border-red-500" : ""
+										}`}
 									placeholder="Nhập tên chiến dịch"
 								/>
 								{errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
@@ -597,9 +529,8 @@ const BloodCamps = () => {
 									type="date"
 									value={formData.date}
 									onChange={(e) => handleInputChange("date", e.target.value)}
-									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-										errors.date ? "border-red-500" : ""
-									}`}
+									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.date ? "border-red-500" : ""
+										}`}
 								/>
 								{errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
 							</div>
@@ -612,9 +543,8 @@ const BloodCamps = () => {
 										type="time"
 										value={formData.startTime}
 										onChange={(e) => handleInputChange("startTime", e.target.value)}
-										className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-											errors.startTime ? "border-red-500" : ""
-										}`}
+										className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.startTime ? "border-red-500" : ""
+											}`}
 									/>
 									{errors.startTime && <p className="text-red-500 text-sm mt-1">{errors.startTime}</p>}
 								</div>
@@ -624,9 +554,8 @@ const BloodCamps = () => {
 										type="time"
 										value={formData.endTime}
 										onChange={(e) => handleInputChange("endTime", e.target.value)}
-										className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-											errors.endTime ? "border-red-500" : ""
-										}`}
+										className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.endTime ? "border-red-500" : ""
+											}`}
 									/>
 									{errors.endTime && <p className="text-red-500 text-sm mt-1">{errors.endTime}</p>}
 								</div>
@@ -639,9 +568,8 @@ const BloodCamps = () => {
 									type="text"
 									value={formData.venue}
 									onChange={(e) => handleInputChange("venue", e.target.value)}
-									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-										errors.venue ? "border-red-500" : ""
-									}`}
+									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.venue ? "border-red-500" : ""
+										}`}
 									placeholder="Nhập tên địa điểm"
 								/>
 								{errors.venue && <p className="text-red-500 text-sm mt-1">{errors.venue}</p>}
@@ -653,9 +581,8 @@ const BloodCamps = () => {
 									type="text"
 									value={formData.city}
 									onChange={(e) => handleInputChange("city", e.target.value)}
-									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-										errors.city ? "border-red-500" : ""
-									}`}
+									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.city ? "border-red-500" : ""
+										}`}
 									placeholder="Nhập thành phố"
 								/>
 								{errors.city && <p className="text-red-500 text-sm mt-1">{errors.city}</p>}
@@ -667,9 +594,8 @@ const BloodCamps = () => {
 									type="text"
 									value={formData.state}
 									onChange={(e) => handleInputChange("state", e.target.value)}
-									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-										errors.state ? "border-red-500" : ""
-									}`}
+									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.state ? "border-red-500" : ""
+										}`}
 									placeholder="Nhập tỉnh/thành"
 								/>
 								{errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
@@ -681,9 +607,8 @@ const BloodCamps = () => {
 									type="text"
 									value={formData.pincode}
 									onChange={(e) => handleInputChange("pincode", e.target.value)}
-									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-										errors.pincode ? "border-red-500" : ""
-									}`}
+									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.pincode ? "border-red-500" : ""
+										}`}
 									placeholder="Mã bưu chính 6 chữ số"
 									maxLength={6}
 								/>
@@ -700,9 +625,8 @@ const BloodCamps = () => {
 									min="1"
 									value={formData.expectedDonors}
 									onChange={(e) => handleInputChange("expectedDonors", e.target.value)}
-									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-										errors.expectedDonors ? "border-red-500" : ""
-									}`}
+									className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 ${errors.expectedDonors ? "border-red-500" : ""
+										}`}
 									placeholder="Số lượng người hiến dự kiến"
 								/>
 								{errors.expectedDonors && (
