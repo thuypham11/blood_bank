@@ -63,7 +63,10 @@ const bloodSchema = new mongoose.Schema(
     },
 
     issuedTo: { type: String, trim: true },
+    issuedToName: { type: String, trim: true },
     issueReason: { type: String, trim: true },
+    issueCode: { type: String, trim: true, index: true },
+    issueRequestId: { type: mongoose.Schema.Types.ObjectId, ref: "BloodRequest", default: null, index: true },
     issuedAt: Date,
   },
   {

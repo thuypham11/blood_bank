@@ -636,7 +636,7 @@ export const sendOtp = async (req, res) => {
     await OTP.create({ donorId, code: otpCode, expiresAt });
 
     // Gọi Golang service gửi email OTP
-    await axios.post('http://localhost:8080/send-otp', {
+    await axios.post('http://localhost:8081/send-otp', {
       toEmail: donor.email,
       otpCode,
       donorName: donor.fullName

@@ -59,7 +59,8 @@ const DonorDashboard = () => {
 
       setHistory(historyData);
 
-      const totalDonations = historyData.length;
+      // Ưu tiên totalDonations từ profile (chính xác nhất, không bị ảnh hưởng bởi pagination)
+      const totalDonations = donorData.totalDonations ?? historyRes.data.pagination?.total ?? historyData.length;
       const livesImpacted = totalDonations * 3;
       const achievementLevel = totalDonations >= 10 ? "Vàng" : totalDonations >= 5 ? "Bạc" : "Đồng";
       const nextMilestone = totalDonations < 5 ? 5 : totalDonations < 10 ? 10 : 15;

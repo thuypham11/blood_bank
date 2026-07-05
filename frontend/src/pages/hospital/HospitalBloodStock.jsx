@@ -219,7 +219,7 @@ const HospitalBloodStock = () => {
 							<h3 className="text-lg font-medium text-gray-800 mb-2">Chưa có dữ liệu kho máu</h3>
 							<p className="text-gray-600 mb-4">Yêu cầu máu từ ngân hàng máu để xây dựng kho dự trữ</p>
 							<button
-								onClick={() => (window.location.href = "/hospital/request-blood")}
+								onClick={() => (window.location.href = "/hospital/blood-request-create")}
 								className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
 								Yêu Cầu Máu
 							</button>
@@ -355,7 +355,7 @@ const HospitalBloodStock = () => {
 						<h3 className="text-lg font-semibold text-gray-800 mb-4">Thao Tác Nhanh</h3>
 						<div className="space-y-3">
 							<button
-								onClick={() => (window.location.href = "/hospital/request-blood")}
+								onClick={() => (window.location.href = "/hospital/blood-request-create")}
 								className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
 								<Plus size={18} />
 								Yêu Cầu Thêm Máu

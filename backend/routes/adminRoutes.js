@@ -1,6 +1,6 @@
 import express from "express";
 import { protect } from "../middlewares/authMiddleware.js";
-import { requireRole } from "../middlewares/rbacMiddleware.js";
+import { requirePermission, requireRole } from "../middlewares/rbacMiddleware.js";
 import {
   // Dashboard
   getDashboardStats,
@@ -20,6 +20,7 @@ import {
   createDonor,
   updateDonor,
   deleteDonor,
+  resetDonorPassword,
   // Facility Management
   getAllFacilities,
   createFacility,
@@ -49,12 +50,15 @@ import {
   // Audit Logs & Reports
   getAuditLogs,
   getAdvancedReports,
+  generateBloodConsumptionReport,
   // Notifications
   broadcastNotification,
   getNotificationHistory,
   // Backup
   backupDatabase,
   getBackupList,
+  // Data Sync
+  syncBloodUnitsWithDonors,
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -82,6 +86,7 @@ router.post("/donors", protect, createDonor);
 router.get("/donor/:id", protect, getDonorById);
 router.put("/donor/:id", protect, updateDonor);
 router.delete("/donor/:id", protect, requireRole("superadmin"), deleteDonor);
+router.post("/donor/:id/reset-password", protect, requireRole("superadmin"), resetDonorPassword);
 
 // ── Facility Management ───────────────────────────────────────
 router.get("/facilities", protect, getAllFacilities);
@@ -115,7 +120,8 @@ router.delete("/camps/:id", protect, requireRole("superadmin"), deleteCamp);
 
 // ── Audit Logs & Reports ──────────────────────────────────────
 router.get("/audit-logs", protect, requireRole("superadmin"), getAuditLogs);
-router.get("/reports", protect, getAdvancedReports);
+router.get("/reports/blood-consumption", protect, requirePermission("view_reports"), generateBloodConsumptionReport);
+router.get("/reports", protect, requirePermission("view_reports"), getAdvancedReports);
 
 // ── Notifications ─────────────────────────────────────────────
 router.post("/notifications/broadcast", protect, requireRole("superadmin"), broadcastNotification);
@@ -124,5 +130,8 @@ router.get("/notifications/history", protect, requireRole("superadmin"), getNoti
 // ── Backup & Settings ─────────────────────────────────────────
 router.post("/backup", protect, requireRole("superadmin"), backupDatabase);
 router.get("/backups/list", protect, requireRole("superadmin"), getBackupList);
+
+// ── Data Sync ─────────────────────────────────────────────────
+router.post("/sync-blood-donors", protect, syncBloodUnitsWithDonors);
 
 export default router;

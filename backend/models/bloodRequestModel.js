@@ -51,7 +51,30 @@ const bloodRequestSchema = new mongoose.Schema({
     }
   ],
   processedAt: Date,
+  processedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Facility"
+  },
+  issuedAt: Date,
+  issueCode: String,
+  fulfilledVolume: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  fulfilledUnits: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  fulfilledUnitIds: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Blood"
+    }
+  ],
   confirmedAt: Date,
+  rejectionReason: String,
   notes: String
 }, { timestamps: true });
 

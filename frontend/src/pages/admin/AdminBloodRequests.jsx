@@ -72,7 +72,7 @@ const AdminBloodRequests = () => {
   const handleDelete = async (id) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa yêu cầu này?")) return;
     try {
-      await axios.delete(`http://localhost:5000/api/admin/blood-request/${id}`, { headers });
+      await axios.delete(`http://localhost:5000/api/admin/blood-requests/${id}`, { headers });
       setSuccessMsg("Đã xóa thành công");
       fetchRequests();
     } catch (err) {
@@ -84,9 +84,9 @@ const AdminBloodRequests = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        await axios.put(`http://localhost:5000/api/admin/blood-request/${formData._id}`, formData, { headers });
+        await axios.put(`http://localhost:5000/api/admin/blood-requests/${formData._id}`, formData, { headers });
       } else {
-        await axios.post(`http://localhost:5000/api/admin/blood-request`, formData, { headers });
+        await axios.post("http://localhost:5000/api/admin/blood-requests", formData, { headers });
       }
       setSuccessMsg(isEditing ? "Cập nhật thành công" : "Thêm mới thành công");
       setShowFormModal(false);

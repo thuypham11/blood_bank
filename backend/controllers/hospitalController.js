@@ -76,17 +76,28 @@ export const hospitalRequestBlood = async (req, res) => {
       }]
     });
 
-    // Add to hospital history
-    await Facility.findByIdAndUpdate(hospitalId, {
-      $push: {
-        history: {
-          eventType: "Stock Update",
-          description: `Requested ${units} units of ${bloodType} from ${lab.name}`,
-          date: new Date(),
-          referenceId: request._id,
+    await Promise.all([
+      Facility.findByIdAndUpdate(hospitalId, {
+        $push: {
+          history: {
+            eventType: "Stock Update",
+            description: `Requested ${units} units of ${bloodType} from ${lab.name}`,
+            date: new Date(),
+            referenceId: request._id,
+          },
         },
-      },
-    });
+      }),
+      Facility.findByIdAndUpdate(labId, {
+        $push: {
+          history: {
+            eventType: "Stock Update",
+            description: `Received blood request ${request._id} for ${units} units of ${bloodType}`,
+            date: new Date(),
+            referenceId: request._id,
+          },
+        },
+      }),
+    ]);
 
     res.status(201).json({
       success: true,
@@ -203,27 +214,45 @@ export const confirmBloodHandover = async (req, res) => {
       });
     }
 
-    const labStock = await Blood.findOne({
-      bloodLab: request.labId._id,
-      bloodGroup: request.bloodType
-    });
-
-    if (!labStock || labStock.quantity < request.units) {
-      return res.status(400).json({
-        success: false,
-        message: `Insufficient stock to complete handover. Available: ${labStock?.quantity || 0} units`
-      });
-    }
-
-    labStock.quantity -= request.units;
-    if (labStock.quantity === 0) {
-      await Blood.findByIdAndDelete(labStock._id);
-    } else {
-      await labStock.save();
-    }
-
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 42);
+    let receivedQuantity = request.fulfilledVolume || 0;
+
+    if (request.fulfilledUnitIds?.length > 0) {
+      const issuedUnits = await Blood.find({
+        _id: { $in: request.fulfilledUnitIds },
+        bloodLab: request.labId._id,
+        status: "issued"
+      });
+
+      receivedQuantity = issuedUnits.reduce((sum, unit) => sum + (unit.quantity || 0), 0) || receivedQuantity;
+
+      await Blood.updateMany(
+        { _id: { $in: issuedUnits.map((unit) => unit._id) } },
+        { $set: { status: "used" } }
+      );
+    } else {
+      const labStock = await Blood.findOne({
+        bloodLab: request.labId._id,
+        bloodGroup: request.bloodType
+      });
+
+      if (!labStock || labStock.quantity < request.units) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock to complete handover. Available: ${labStock?.quantity || 0} units`
+        });
+      }
+
+      labStock.quantity -= request.units;
+      receivedQuantity = request.units;
+
+      if (labStock.quantity === 0) {
+        await Blood.findByIdAndDelete(labStock._id);
+      } else {
+        await labStock.save();
+      }
+    }
 
     const hospitalStock = await Blood.findOne({
       hospital: hospitalId,
@@ -231,16 +260,18 @@ export const confirmBloodHandover = async (req, res) => {
     });
 
     if (hospitalStock) {
-      hospitalStock.quantity += request.units;
+      hospitalStock.quantity += receivedQuantity;
       hospitalStock.expiryDate = expiryDate;
+      hospitalStock.status = "available";
       await hospitalStock.save();
     } else {
       await Blood.create({
         bloodGroup: request.bloodType,
         bloodType: request.bloodType,
-        quantity: request.units,
+        quantity: receivedQuantity,
         expiryDate,
-        hospital: hospitalId
+        hospital: hospitalId,
+        status: "available"
       });
     }
 

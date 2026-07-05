@@ -6,8 +6,30 @@ import BloodModel from "../models/BloodModel.js";
 import BloodRequest from "../models/bloodRequestModel.js";
 import AuditLog from "../models/AuditLogModel.js";
 import Notification from "../models/NotificationModel.js";
-import DonationSession from "../models/DonationSession.js";   // ← thêm
-import Staff from "../models/Staff.js";         
+import DonationSession from "../models/DonationSession.js";
+import Staff from "../models/Staff.js";
+import mongoose from "mongoose";
+import { sendDonorPasswordReset } from "../services/emailService.js";
+
+const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const DEFAULT_UNIT_VOLUME_ML = 450;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const clampNumber = (value, min, max) => Math.min(Math.max(value, min), max);
+const getBloodGroup = (item) => item.bloodGroup || item.bloodType;
+const toObjectId = (value) => (
+  value && mongoose.Types.ObjectId.isValid(value)
+    ? new mongoose.Types.ObjectId(value)
+    : value
+);
+const toFiniteNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const getDateKey = (value) => {
+  const date = value ? new Date(value) : new Date();
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+};
 /* ==============================================================
    DASHBOARD STATS
    ============================================================== */
@@ -321,6 +343,14 @@ export const approveBloodRequest = async (req, res) => {
     if (!request) return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu" });
     request.status = "accepted";
     request.handoverStatus = "preparing";
+    request.processedAt = new Date();
+    request.handoverTimeline.push({
+      status: "preparing",
+      label: "Yeu cau duoc duyet va dang chuan bi",
+      date: new Date(),
+      actor: request.labId,
+      note: "Approved by admin",
+    });
     await request.save();
     await AuditLog.create({
       action: "APPROVE_BLOOD_REQUEST",
@@ -341,6 +371,13 @@ export const rejectBloodRequest = async (req, res) => {
     const request = await BloodRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu" });
     request.status = "rejected";
+    request.handoverTimeline.push({
+      status: "rejected",
+      label: "Yeu cau bi tu choi",
+      date: new Date(),
+      actor: request.labId,
+      note: reason || "Rejected by admin",
+    });
     request.rejectionReason = reason || "Bị từ chối bởi Admin";
     await request.save();
     await AuditLog.create({
@@ -391,6 +428,7 @@ export const getBloodStockUnits = async (req, res) => {
     const total = await BloodModel.countDocuments(filter);
     const units = await BloodModel.find(filter)
       .populate("bloodLab", "name address")
+      .populate("donor", "fullName bloodGroup phone")
       .sort({ expiryDate: 1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
@@ -403,22 +441,47 @@ export const getBloodStockUnits = async (req, res) => {
 
 export const addBloodUnit = async (req, res) => {
   try {
-    const { bloodGroup, quantity, bloodLab, collectionDate, screeningResult } = req.body;
+    const { bloodGroup, quantity, bloodLab, collectionDate, screeningResult, donorId } = req.body;
     if (!bloodGroup) return res.status(400).json({ success: false, message: "Nhóm máu là bắt buộc" });
     const barcode = `BLD-${Date.now()}-${Math.floor(Math.random() * 99999)}`;
+
+    // Validate donor if provided
+    let donor = null;
+    if (donorId) {
+      donor = await Donor.findById(donorId);
+      if (!donor) return res.status(404).json({ success: false, message: "Không tìm thấy người hiến máu" });
+    }
+
+    const collDate = collectionDate ? new Date(collectionDate) : new Date();
     const unit = await BloodModel.create({
       barcode, bloodGroup, bloodType: bloodGroup,
       quantity: quantity || 250,
       bloodLab,
-      collectionDate: collectionDate || new Date(),
+      donor: donorId || undefined,
+      collectionDate: collDate,
       screeningResult: screeningResult || { hiv: "pending", hbv: "pending", hcv: "pending" },
       status: "pending_testing",
     });
+
+    // ✅ Nếu có người hiến máu, cập nhật lịch sử hiến máu của họ
+    if (donor) {
+      donor.donationHistory.push({
+        donationDate: collDate,
+        facility: bloodLab || undefined,
+        bloodGroup: bloodGroup,
+        quantity: quantity || 250,
+        bloodUnitId: unit._id,
+        verified: false,
+      });
+      donor.lastDonationDate = collDate;
+      await donor.save();
+    }
+
     await AuditLog.create({
       action: "ADD_BLOOD_UNIT",
       performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
       target: { targetType: "Blood", targetId: unit._id },
-      description: `Nhập kho ${quantity}ml ${bloodGroup} (${barcode})`,
+      description: `Nhập kho ${quantity}ml ${bloodGroup} (${barcode})${donor ? ` - Người hiến: ${donor.fullName}` : ""}`,
       ipAddress: req.ip,
     });
     res.status(201).json({ success: true, message: "Đã thêm đơn vị máu vào kho", unit });
@@ -484,7 +547,7 @@ export const createCamp = async (req, res) => {
         address: location?.address || "",
         city: location?.city || "",
         state: location?.state || "",
-        coordinates: { lat: location?.lat || 10.7769, lng: location?.lng || 106.7009 },
+        coordinates: { lat: location?.lat || 21.69, lng: location?.lng || 105.789 },
       },
       hospital: hospital || req.body.organizer,
       organizer: hospital || req.body.organizer,
@@ -631,6 +694,334 @@ export const getAdvancedReports = async (req, res) => {
   } catch (err) {
     console.error("getAdvancedReports error:", err);
     res.status(500).json({ success: false, message: "Error fetching reports" });
+  }
+};
+
+export const generateBloodConsumptionReport = async (req, res) => {
+  try {
+    const rangeDays = clampNumber(toFiniteNumber(req.query.rangeDays, 90), 1, 3650);
+    const forecastDays = clampNumber(toFiniteNumber(req.query.forecastDays, 30), 1, 365);
+    const endDate = req.query.endDate ? new Date(req.query.endDate) : new Date();
+    endDate.setHours(23, 59, 59, 999);
+
+    const startDate = req.query.startDate
+      ? new Date(req.query.startDate)
+      : new Date(endDate.getTime() - (rangeDays - 1) * MS_PER_DAY);
+    startDate.setHours(0, 0, 0, 0);
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate > endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Khoang thoi gian bao cao khong hop le",
+      });
+    }
+
+    const actualRangeDays = Math.max(1, Math.ceil((endDate - startDate + 1) / MS_PER_DAY));
+    const { hospitalId } = req.query;
+    const labId = req.reportLabId || req.query.labId;
+
+    if ((labId && !mongoose.Types.ObjectId.isValid(labId)) ||
+        (hospitalId && !mongoose.Types.ObjectId.isValid(hospitalId))) {
+      return res.status(400).json({
+        success: false,
+        message: "Ma blood lab hoac benh vien khong hop le",
+      });
+    }
+
+    const requestFilter = {};
+    const aggregateRequestFilter = {};
+    const stockFilter = {};
+    const issuedFilter = {
+      status: { $in: ["issued", "used"] },
+      issuedAt: { $gte: startDate, $lte: endDate },
+    };
+
+    if (labId) {
+      requestFilter.labId = labId;
+      aggregateRequestFilter.labId = toObjectId(labId);
+      stockFilter.bloodLab = labId;
+      issuedFilter.bloodLab = labId;
+    }
+
+    if (hospitalId) {
+      requestFilter.hospitalId = hospitalId;
+      aggregateRequestFilter.hospitalId = toObjectId(hospitalId);
+      stockFilter.hospital = hospitalId;
+      issuedFilter.$or = [{ issuedTo: hospitalId }, { hospital: hospitalId }];
+    }
+
+    const rangeRequestFilter = {
+      ...requestFilter,
+      $or: [
+        { createdAt: { $gte: startDate, $lte: endDate } },
+        { confirmedAt: { $gte: startDate, $lte: endDate } },
+        { issuedAt: { $gte: startDate, $lte: endDate } },
+        { updatedAt: { $gte: startDate, $lte: endDate }, status: { $in: ["completed", "rejected"] } },
+      ],
+    };
+    const aggregateRangeRequestFilter = {
+      ...aggregateRequestFilter,
+      $or: [
+        { createdAt: { $gte: startDate, $lte: endDate } },
+        { confirmedAt: { $gte: startDate, $lte: endDate } },
+        { issuedAt: { $gte: startDate, $lte: endDate } },
+        { updatedAt: { $gte: startDate, $lte: endDate }, status: { $in: ["completed", "rejected"] } },
+      ],
+    };
+
+    const [requests, openRequests, issuedUnits, stockUnits, topHospitals, topLabs] = await Promise.all([
+      BloodRequest.find(rangeRequestFilter).lean(),
+      BloodRequest.find({ ...requestFilter, status: { $in: ["pending", "accepted"] } })
+        .populate("hospitalId", "name facilityType")
+        .populate("labId", "name facilityType")
+        .sort({ createdAt: 1 })
+        .lean(),
+      BloodModel.find(issuedFilter).lean(),
+      BloodModel.find(stockFilter).lean(),
+      BloodRequest.aggregate([
+        { $match: aggregateRangeRequestFilter },
+        { $group: { _id: "$hospitalId", requests: { $sum: 1 }, units: { $sum: "$units" } } },
+        { $sort: { units: -1 } },
+        { $limit: 5 },
+        { $lookup: { from: "facilities", localField: "_id", foreignField: "_id", as: "facility" } },
+        { $unwind: { path: "$facility", preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 1, name: "$facility.name", requests: 1, units: 1 } },
+      ]),
+      BloodRequest.aggregate([
+        { $match: aggregateRangeRequestFilter },
+        { $group: { _id: "$labId", requests: { $sum: 1 }, units: { $sum: "$units" } } },
+        { $sort: { units: -1 } },
+        { $limit: 5 },
+        { $lookup: { from: "facilities", localField: "_id", foreignField: "_id", as: "facility" } },
+        { $unwind: { path: "$facility", preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 1, name: "$facility.name", requests: 1, units: 1 } },
+      ]),
+    ]);
+
+    const reportByType = BLOOD_TYPES.reduce((acc, type) => {
+      acc[type] = {
+        bloodType: type,
+        currentStockUnits: 0,
+        currentStockMl: 0,
+        qualifiedStockMl: 0,
+        pendingScreeningMl: 0,
+        expiringSoonMl: 0,
+        requestedUnits: 0,
+        requestedVolumeMl: 0,
+        pendingUnits: 0,
+        acceptedUnits: 0,
+        completedUnits: 0,
+        rejectedUnits: 0,
+        openDemandMl: 0,
+        issuedUnits: 0,
+        issuedVolumeMl: 0,
+        fulfilledRequestVolumeMl: 0,
+        fulfilledVolumeMl: 0,
+      };
+      return acc;
+    }, {});
+
+    const dailyMap = new Map();
+    const getDailyBucket = (key) => {
+      if (!key) return null;
+      if (!dailyMap.has(key)) {
+        dailyMap.set(key, {
+          date: key,
+          requestedUnits: 0,
+          completedUnits: 0,
+          issuedVolumeMl: 0,
+          byBloodType: BLOOD_TYPES.reduce((acc, type) => {
+            acc[type] = { requestedUnits: 0, completedUnits: 0, issuedVolumeMl: 0 };
+            return acc;
+          }, {}),
+        });
+      }
+      return dailyMap.get(key);
+    };
+
+    const now = new Date();
+    const expiryThreshold = new Date(now.getTime() + forecastDays * MS_PER_DAY);
+
+    stockUnits.forEach((unit) => {
+      const bloodType = getBloodGroup(unit);
+      if (!reportByType[bloodType]) return;
+
+      const quantity = toFiniteNumber(unit.quantity);
+      if (unit.status === "available") {
+        reportByType[bloodType].currentStockUnits += 1;
+        reportByType[bloodType].currentStockMl += quantity;
+      } else if (unit.status === "qualified") {
+        reportByType[bloodType].qualifiedStockMl += quantity;
+      } else if (["pending_screening", "pending-testing", "pending_testing", "quarantine"].includes(unit.status)) {
+        reportByType[bloodType].pendingScreeningMl += quantity;
+      }
+
+      const expiry = unit.expiryDate || unit.expirationDate;
+      if (unit.status === "available" && expiry && new Date(expiry) <= expiryThreshold && new Date(expiry) >= now) {
+        reportByType[bloodType].expiringSoonMl += quantity;
+      }
+    });
+
+    requests.forEach((request) => {
+      const bloodType = request.bloodType;
+      if (!reportByType[bloodType]) return;
+
+      const units = toFiniteNumber(request.units);
+      const volume = units * DEFAULT_UNIT_VOLUME_ML;
+      reportByType[bloodType].requestedUnits += units;
+      reportByType[bloodType].requestedVolumeMl += volume;
+      reportByType[bloodType][`${request.status}Units`] =
+        toFiniteNumber(reportByType[bloodType][`${request.status}Units`]) + units;
+
+      const createdBucket = getDailyBucket(getDateKey(request.createdAt));
+      if (createdBucket) {
+        createdBucket.requestedUnits += units;
+        createdBucket.byBloodType[bloodType].requestedUnits += units;
+      }
+
+      if (request.status === "completed") {
+        const fulfilledVolume = toFiniteNumber(request.fulfilledVolume) || units * DEFAULT_UNIT_VOLUME_ML;
+        reportByType[bloodType].fulfilledRequestVolumeMl += fulfilledVolume;
+        const completedBucket = getDailyBucket(getDateKey(request.confirmedAt || request.issuedAt || request.updatedAt));
+        if (completedBucket) {
+          completedBucket.completedUnits += units;
+          completedBucket.byBloodType[bloodType].completedUnits += units;
+        }
+      }
+    });
+
+    openRequests.forEach((request) => {
+      const bloodType = request.bloodType;
+      if (!reportByType[bloodType]) return;
+      reportByType[bloodType].openDemandMl += toFiniteNumber(request.units) * DEFAULT_UNIT_VOLUME_ML;
+    });
+
+    issuedUnits.forEach((unit) => {
+      const bloodType = getBloodGroup(unit);
+      if (!reportByType[bloodType]) return;
+
+      const quantity = toFiniteNumber(unit.quantity);
+      reportByType[bloodType].issuedUnits += 1;
+      reportByType[bloodType].issuedVolumeMl += quantity;
+      reportByType[bloodType].fulfilledVolumeMl += quantity;
+
+      const issuedBucket = getDailyBucket(getDateKey(unit.issuedAt || unit.updatedAt));
+      if (issuedBucket) {
+        issuedBucket.issuedVolumeMl += quantity;
+        issuedBucket.byBloodType[bloodType].issuedVolumeMl += quantity;
+      }
+    });
+
+    const byBloodType = BLOOD_TYPES.map((type) => {
+      const item = reportByType[type];
+      const demandBasisMl = Math.max(item.issuedVolumeMl, item.fulfilledRequestVolumeMl);
+      const averageDailyDemandMl = Math.round(demandBasisMl / actualRangeDays);
+      const forecastDemandMl = Math.round(averageDailyDemandMl * forecastDays);
+      const projectedNeedMl = forecastDemandMl + item.openDemandMl;
+      const projectedStockAfterForecastMl = item.currentStockMl - projectedNeedMl;
+      const reorderSuggestionMl = Math.max(0, Math.ceil((projectedNeedMl - item.currentStockMl) / DEFAULT_UNIT_VOLUME_ML) * DEFAULT_UNIT_VOLUME_ML);
+      const coverageDays = averageDailyDemandMl > 0
+        ? Math.round((item.currentStockMl / averageDailyDemandMl) * 10) / 10
+        : null;
+
+      let riskLevel = "low";
+      if (reorderSuggestionMl > 0) riskLevel = "critical";
+      else if (coverageDays !== null && coverageDays < 7) riskLevel = "high";
+      else if (coverageDays !== null && coverageDays < forecastDays) riskLevel = "medium";
+      else if (item.currentStockMl > 0 && item.expiringSoonMl / item.currentStockMl > 0.35) riskLevel = "medium";
+
+      return {
+        ...item,
+        averageDailyDemandMl,
+        forecastDays,
+        forecastDemandMl,
+        projectedStockAfterForecastMl,
+        reorderSuggestionMl,
+        coverageDays,
+        riskLevel,
+      };
+    });
+
+    const totals = byBloodType.reduce((acc, item) => {
+      acc.currentStockMl += item.currentStockMl;
+      acc.expiringSoonMl += item.expiringSoonMl;
+      acc.requestedUnits += item.requestedUnits;
+      acc.pendingUnits += item.pendingUnits;
+      acc.acceptedUnits += item.acceptedUnits;
+      acc.completedUnits += item.completedUnits;
+      acc.rejectedUnits += item.rejectedUnits;
+      acc.openDemandMl += item.openDemandMl;
+      acc.issuedVolumeMl += item.issuedVolumeMl;
+      acc.forecastDemandMl += item.forecastDemandMl;
+      acc.reorderSuggestionMl += item.reorderSuggestionMl;
+      return acc;
+    }, {
+      currentStockMl: 0,
+      expiringSoonMl: 0,
+      requestedUnits: 0,
+      pendingUnits: 0,
+      acceptedUnits: 0,
+      completedUnits: 0,
+      rejectedUnits: 0,
+      openDemandMl: 0,
+      issuedVolumeMl: 0,
+      forecastDemandMl: 0,
+      reorderSuggestionMl: 0,
+    });
+
+    const fulfilledRequests = totals.completedUnits + totals.rejectedUnits;
+    const fulfillmentRate = requests.length > 0
+      ? Math.round((requests.filter((request) => request.status === "completed").length / requests.length) * 1000) / 10
+      : 0;
+
+    const syncIssues = {
+      openRequests: openRequests.length,
+      acceptedNotShipping: openRequests.filter((request) =>
+        request.status === "accepted" && !["shipping", "confirmed"].includes(request.handoverStatus)
+      ).length,
+      issuedWithoutRequest: issuedUnits.filter((unit) => !unit.issueRequestId).length,
+      pendingOlderThan48h: openRequests.filter((request) =>
+        request.status === "pending" && Date.now() - new Date(request.createdAt).getTime() > 2 * MS_PER_DAY
+      ).length,
+    };
+
+    res.status(200).json({
+      success: true,
+      generatedAt: new Date(),
+      filters: {
+        startDate,
+        endDate,
+        rangeDays: actualRangeDays,
+        forecastDays,
+        labId: labId || null,
+        hospitalId: hospitalId || null,
+        unitVolumeMl: DEFAULT_UNIT_VOLUME_ML,
+      },
+      summary: {
+        ...totals,
+        processedUnits: fulfilledRequests,
+        fulfillmentRate,
+      },
+      byBloodType,
+      daily: Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+      openRequests: openRequests.map((request) => ({
+        _id: request._id,
+        status: request.status,
+        handoverStatus: request.handoverStatus,
+        bloodType: request.bloodType,
+        units: request.units,
+        estimatedVolumeMl: toFiniteNumber(request.units) * DEFAULT_UNIT_VOLUME_ML,
+        hospital: request.hospitalId?.name || request.hospitalId,
+        lab: request.labId?.name || request.labId,
+        createdAt: request.createdAt,
+      })),
+      topHospitals,
+      topLabs,
+      sync: syncIssues,
+    });
+  } catch (err) {
+    console.error("generateBloodConsumptionReport error:", err);
+    res.status(500).json({ success: false, message: "Error generating blood consumption report" });
   }
 };
 
@@ -857,6 +1248,57 @@ export const deleteBloodRequest = async (req, res) => {
   }
 };
 
+/* ==============================================================
+   RESET DONOR PASSWORD (Admin)
+   ============================================================== */
+export const resetDonorPassword = async (req, res) => {
+  try {
+    const donor = await Donor.findById(req.params.id);
+    if (!donor) return res.status(404).json({ success: false, message: "Không tìm thấy người hiến máu" });
+
+    // Tạo mật khẩu mới ngẫu nhiên 10 ký tự (chữ + số)
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    const newPassword = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+
+    // Gán mật khẩu mới (pre-save hook sẽ hash tự động)
+    donor.password = newPassword;
+    await donor.save();
+
+    // Gửi email
+    let emailSent = false;
+    try {
+      await sendDonorPasswordReset({
+        toEmail: donor.email,
+        fullName: donor.fullName,
+        newPassword,
+      });
+      emailSent = true;
+    } catch (emailErr) {
+      console.error("Email send error:", emailErr.message);
+    }
+
+    // Audit log
+    await AuditLog.create({
+      action: "RESET_DONOR_PASSWORD",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "Donor", targetId: donor._id },
+      description: `Đặt lại mật khẩu cho donor ${donor.fullName} (${donor.email})`,
+      ipAddress: req.ip,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: emailSent
+        ? `✅ Đã đặt lại mật khẩu và gửi email đến ${donor.email}`
+        : `✅ Đã đặt lại mật khẩu (lỗi gửi email — kiểm tra cấu hình EMAIL_USER/EMAIL_PASS trong .env)`,
+      emailSent,
+    });
+  } catch (err) {
+    console.error("resetDonorPassword error:", err);
+    res.status(500).json({ success: false, message: "Lỗi đặt lại mật khẩu: " + err.message });
+  }
+};
+
 export const deleteBloodUnit = async (req, res) => {
   try {
     const unit = await BloodModel.findByIdAndDelete(req.params.id);
@@ -893,5 +1335,99 @@ export const updateCamp = async (req, res) => {
     res.status(200).json({ success: true, message: "Cập nhật thông tin chiến dịch thành công", camp });
   } catch (err) {
     res.status(500).json({ success: false, message: "Lỗi cập nhật chiến dịch", error: err.message });
+  }
+};
+
+/* ==============================================================
+   SYNC BLOOD UNITS WITH DONORS (One-time data migration)
+   ============================================================== */
+export const syncBloodUnitsWithDonors = async (req, res) => {
+  try {
+    // 1. Lấy tất cả đơn vị máu chưa có donor
+    const unlinkedUnits = await BloodModel.find({ donor: { $exists: false } });
+
+    if (unlinkedUnits.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Tất cả đơn vị máu đã được liên kết với người hiến máu!",
+        linked: 0,
+        skipped: 0,
+      });
+    }
+
+    // 2. Lấy tất cả donor, nhóm theo nhóm máu
+    const allDonors = await Donor.find({}).select("_id fullName bloodGroup donationHistory lastDonationDate");
+    const donorsByBloodGroup = {};
+    allDonors.forEach(d => {
+      if (!donorsByBloodGroup[d.bloodGroup]) donorsByBloodGroup[d.bloodGroup] = [];
+      donorsByBloodGroup[d.bloodGroup].push(d);
+    });
+
+    let linked = 0;
+    let skipped = 0;
+    const donorUpdateMap = {}; // donorId -> { donor, newEntries[] }
+
+    for (const unit of unlinkedUnits) {
+      const bg = unit.bloodGroup;
+      const candidates = donorsByBloodGroup[bg];
+
+      if (!candidates || candidates.length === 0) {
+        skipped++;
+        continue;
+      }
+
+      // Chọn donor theo round-robin (phân bổ đều)
+      const donorIndex = linked % candidates.length;
+      const donor = candidates[donorIndex];
+
+      // Cập nhật đơn vị máu — gán donor
+      await BloodModel.findByIdAndUpdate(unit._id, { donor: donor._id });
+
+      // Gom thay đổi donor lại
+      if (!donorUpdateMap[donor._id.toString()]) {
+        donorUpdateMap[donor._id.toString()] = { donor, newEntries: [] };
+      }
+      donorUpdateMap[donor._id.toString()].newEntries.push({
+        donationDate: unit.collectionDate || unit.createdAt || new Date(),
+        facility: unit.bloodLab || undefined,
+        bloodGroup: bg,
+        quantity: unit.quantity || 250,
+        bloodUnitId: unit._id,
+        verified: true,
+      });
+
+      linked++;
+    }
+
+    // 3. Cập nhật donationHistory cho từng donor
+    for (const key of Object.keys(donorUpdateMap)) {
+      const { donor, newEntries } = donorUpdateMap[key];
+      const sortedEntries = newEntries.sort((a, b) => new Date(b.donationDate) - new Date(a.donationDate));
+      const latestDate = sortedEntries[0].donationDate;
+
+      await Donor.findByIdAndUpdate(donor._id, {
+        $push: { donationHistory: { $each: newEntries } },
+        $set: { lastDonationDate: latestDate },
+      });
+    }
+
+    await AuditLog.create({
+      action: "SYNC_BLOOD_DONATIONS",
+      performedBy: { userType: "Admin", userId: req.user?.id, name: req.user?.name || "Admin" },
+      target: { targetType: "System", targetId: req.user?.id },
+      description: `Đồng bộ dữ liệu: liên kết ${linked} đơn vị máu với người hiến. Bỏ qua ${skipped} đơn vị không tìm được donor phù hợp.`,
+      ipAddress: req.ip,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `✅ Đồng bộ thành công! Đã liên kết ${linked} đơn vị máu với người hiến máu.`,
+      linked,
+      skipped,
+      donorsUpdated: Object.keys(donorUpdateMap).length,
+    });
+  } catch (err) {
+    console.error("syncBloodUnitsWithDonors error:", err);
+    res.status(500).json({ success: false, message: "Lỗi đồng bộ dữ liệu: " + err.message });
   }
 };

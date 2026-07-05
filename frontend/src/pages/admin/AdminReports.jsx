@@ -34,6 +34,7 @@ const BarChart = ({ data, maxVal }) => (
 const AdminReports = () => {
   const { userData } = useOutletContext();
   const [reports, setReports] = useState(null);
+  const [consumptionReport, setConsumptionReport] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -43,10 +44,16 @@ const AdminReports = () => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const { data } = await axios.get("http://localhost:5000/api/admin/reports", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setReports(data.reports);
+      const [reportsRes, consumptionRes] = await Promise.all([
+        axios.get("http://localhost:5000/api/admin/reports", {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get("http://localhost:5000/api/admin/reports/blood-consumption?rangeDays=90&forecastDays=30", {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+      ]);
+      setReports(reportsRes.data.reports);
+      setConsumptionReport(consumptionRes.data);
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tải báo cáo");
     } finally {
@@ -82,6 +89,14 @@ const AdminReports = () => {
     reports.camps?.forEach(c => {
       csv += `"${c.title}","${new Date(c.date).toLocaleDateString("vi-VN")}","${c.status}","${c.expectedDonors}"\n`;
     });
+
+    if (consumptionReport?.byBloodType?.length) {
+      csv += "\n=== DU BAO LUU LUONG MAU ===\n";
+      csv += "Nhom Mau,Ton Kho (ml),Nhu Cau Du Bao (ml),Can Bo Sung (ml),Rui Ro\n";
+      consumptionReport.byBloodType.forEach(item => {
+        csv += `${item.bloodType},${item.currentStockMl},${item.forecastDemandMl},${item.reorderSuggestionMl},${item.riskLevel}\n`;
+      });
+    }
 
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csv));
@@ -138,6 +153,65 @@ const AdminReports = () => {
               </div>
             ))}
           </div>
+
+          {consumptionReport && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-50">
+              <h3 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <TrendingUp className="text-red-500" size={18}/> Du bao luu luong mau
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+                {[
+                  { label: "Nhu cau du bao", value: `${consumptionReport.summary?.forecastDemandMl || 0} ml` },
+                  { label: "Can bo sung", value: `${consumptionReport.summary?.reorderSuggestionMl || 0} ml` },
+                  { label: "Yeu cau mo", value: consumptionReport.sync?.openRequests || 0 },
+                  { label: "Xuat chua gan request", value: consumptionReport.sync?.issuedWithoutRequest || 0 },
+                ].map(item => (
+                  <div key={item.label} className="rounded-xl bg-red-50/60 border border-red-100 p-4">
+                    <div className="text-xs uppercase font-semibold text-gray-500">{item.label}</div>
+                    <div className="text-xl font-black text-gray-800 mt-1">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-500">
+                      <th className="pb-3">Nhom mau</th>
+                      <th className="pb-3 text-right">Ton kho ml</th>
+                      <th className="pb-3 text-right">Du bao ml</th>
+                      <th className="pb-3 text-right">Can bo sung</th>
+                      <th className="pb-3 text-right">Rui ro</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {consumptionReport.byBloodType
+                      ?.filter(item => item.forecastDemandMl > 0 || item.currentStockMl > 0 || item.openDemandMl > 0)
+                      .map(item => (
+                        <tr key={item.bloodType}>
+                          <td className="py-3 font-bold text-red-600">{item.bloodType}</td>
+                          <td className="py-3 text-right">{item.currentStockMl}</td>
+                          <td className="py-3 text-right">{item.forecastDemandMl}</td>
+                          <td className="py-3 text-right font-semibold">{item.reorderSuggestionMl}</td>
+                          <td className="py-3 text-right">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                              item.riskLevel === "critical"
+                                ? "bg-red-100 text-red-700"
+                                : item.riskLevel === "high"
+                                  ? "bg-orange-100 text-orange-700"
+                                  : item.riskLevel === "medium"
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : "bg-green-100 text-green-700"
+                            }`}>
+                              {item.riskLevel}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Chart: Stock by Blood Group */}

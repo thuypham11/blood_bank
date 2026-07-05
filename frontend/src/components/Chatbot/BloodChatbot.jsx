@@ -33,7 +33,7 @@ const BloodChatbot = () => {
     console.log("🔌 Kết nối Socket.IO...");
     const newSocket = io("http://localhost:5000", {
       transports: ["websocket", "polling"],
-      reconnection: true,
+      reconnection: false,
       reconnectionAttempts: 5,
     });
 
