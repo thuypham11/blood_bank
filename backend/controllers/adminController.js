@@ -547,7 +547,7 @@ export const createCamp = async (req, res) => {
         address: location?.address || "",
         city: location?.city || "",
         state: location?.state || "",
-        coordinates: { lat: location?.lat || 10.7769, lng: location?.lng || 106.7009 },
+        coordinates: { lat: location?.lat || 21.69, lng: location?.lng || 105.789 },
       },
       hospital: hospital || req.body.organizer,
       organizer: hospital || req.body.organizer,
