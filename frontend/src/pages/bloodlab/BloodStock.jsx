@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { Html5Qrcode } from "html5-qrcode";
 import {
   Droplets,
   QrCode,
@@ -15,45 +16,26 @@ import {
   AlertTriangle,
   RefreshCw,
   ScanLine,
-  Layers3,
   X,
   ChevronLeft,
   ChevronRight,
   Filter,
+  UploadCloud,
+  Cable,
+  Camera,
+  ShieldCheck,
 } from "lucide-react";
 
 const API_URL = "http://localhost:5000/api/blood-lab";
 
 const bloodTypes = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-
-const bloodComponents = [
-  { key: "red_cells", label: "Khối hồng cầu", color: "border-red-200 bg-red-50 text-red-700" },
-  { key: "platelets", label: "Khối tiểu cầu", color: "border-amber-200 bg-amber-50 text-amber-700" },
-  { key: "plasma", label: "Huyết tương", color: "border-blue-200 bg-blue-50 text-blue-700" },
-];
-
-const emptyComponentDetails = bloodComponents.reduce((result, component) => {
-  result[component.key] = { quantity: "", expiryDate: "" };
-  return result;
-}, {});
-
-const componentLabels = {
-  whole_blood: "Máu toàn phần",
-  red_cells: "Khối hồng cầu",
-  platelets: "Khối tiểu cầu",
-  plasma: "Huyết tương",
-};
-
-// Hospital options will be fetched from API; prioritized by pending requests
-
-const issueVolumeOptions = [250, 350, 450, 500, 700, 900, 1000, 1500, 2000];
 const pageSizeOptions = [5, 10, 20];
+
 const statusFilterOptions = [
   { value: "pending", label: "Chờ xử lý" },
   { value: "qualified", label: "Đạt sàng lọc" },
   { value: "available", label: "Sẵn sàng trong kho" },
   { value: "issued", label: "Đã xuất kho" },
-  { value: "processed", label: "Đã tách chế phẩm" },
   { value: "rejected", label: "Không đạt" },
   { value: "discarded", label: "Đã loại bỏ" },
   { value: "expired", label: "Hết hạn" },
@@ -64,6 +46,7 @@ const pendingStatusValues = new Set([
   "pending-testing",
   "pending_testing",
   "quarantine",
+  "pending",
 ]);
 
 const screeningFields = [
@@ -75,6 +58,7 @@ const screeningFields = [
 ];
 
 const emptyReceiveForm = {
+  unitCode: "",
   bloodType: "",
   volume: "",
   collectionDate: "",
@@ -87,7 +71,6 @@ const emptyIssueForm = {
   hospitalId: "",
   hospitalName: "",
   requestId: "",
-  componentType: "",
   reason: "",
 };
 
@@ -95,7 +78,96 @@ const getToken = () => localStorage.getItem("token");
 
 const formatDate = (date) => {
   if (!date) return "Chưa cập nhật";
-  return new Date(date).toLocaleDateString("vi-VN");
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) return "Chưa cập nhật";
+  return parsedDate.toLocaleDateString("vi-VN");
+};
+
+const toInputDate = (value) => {
+  if (!value) return "";
+  const text = String(value).trim();
+
+  const slashMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const day = slashMatch[1].padStart(2, "0");
+    const month = slashMatch[2].padStart(2, "0");
+    const year = slashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const dashMatch = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashMatch) {
+    const day = dashMatch[1].padStart(2, "0");
+    const month = dashMatch[2].padStart(2, "0");
+    const year = dashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  return "";
+};
+
+const parseBloodQrText = (rawText) => {
+  const text = String(rawText || "").trim();
+
+  const result = {
+    unitCode: "",
+    bloodType: "",
+    volume: "",
+    collectionDate: "",
+  };
+
+  if (!text) return result;
+
+  try {
+    const json = JSON.parse(text);
+
+    result.unitCode =
+      json.unitCode ||
+      json.barcode ||
+      json.bloodCode ||
+      json.code ||
+      json.bagCode ||
+      "";
+
+    result.bloodType = json.bloodType || json.bloodGroup || json.group || "";
+
+    result.volume = String(json.volume || json.quantity || json.amount || "").replace(
+      /[^\d]/g,
+      ""
+    );
+
+    result.collectionDate = toInputDate(
+      json.collectionDate || json.donationDate || json.donateDate || json.date
+    );
+
+    return result;
+  } catch {
+    // Không phải JSON thì tiếp tục parse dạng text/mã thường.
+  }
+
+  const bloodCodeMatch = text.match(/(BLOOD-[A-Za-z0-9]+-[A-Za-z0-9]+-(\d+))/i);
+
+  if (bloodCodeMatch) {
+    result.unitCode = bloodCodeMatch[1];
+    result.volume = bloodCodeMatch[2];
+  } else {
+    const genericCodeMatch = text.match(/[A-Z0-9]+-[A-Z0-9-]+/i);
+    if (genericCodeMatch) result.unitCode = genericCodeMatch[0];
+  }
+
+  const bloodTypeMatch = text.match(/\b(AB\+|AB-|A\+|A-|B\+|B-|O\+|O-)\b/);
+  if (bloodTypeMatch) result.bloodType = bloodTypeMatch[1];
+
+  const dateMatch = text.match(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/);
+  if (dateMatch) result.collectionDate = toInputDate(dateMatch[1]);
+
+  const volumeMatch = text.match(/(?:Thể tích|The tich|volume|quantity)\D*(\d{2,4})\s*ml/i);
+  if (volumeMatch && !result.volume) result.volume = volumeMatch[1];
+
+  return result;
 };
 
 const getScreeningBadge = (value) => {
@@ -112,10 +184,7 @@ const getScreeningBadge = (value) => {
   };
 
   return (
-    <span
-      className={`px-2 py-1 rounded-full text-xs font-medium ${config[value] || config.pending
-        }`}
-    >
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${config[value] || config.pending}`}>
       {label[value] || label.pending}
     </span>
   );
@@ -124,6 +193,11 @@ const getScreeningBadge = (value) => {
 const getStatusBadge = (status) => {
   const config = {
     pending_screening: {
+      label: "Chờ sàng lọc",
+      className: "bg-amber-100 text-amber-700",
+      icon: <Clock className="w-3 h-3" />,
+    },
+    pending: {
       label: "Chờ sàng lọc",
       className: "bg-amber-100 text-amber-700",
       icon: <Clock className="w-3 h-3" />,
@@ -158,19 +232,12 @@ const getStatusBadge = (status) => {
       className: "bg-orange-100 text-orange-700",
       icon: <AlertTriangle className="w-3 h-3" />,
     },
-    processed: {
-      label: "Đã tách chế phẩm",
-      className: "bg-cyan-100 text-cyan-700",
-      icon: <Layers3 className="w-3 h-3" />,
-    },
   };
 
   const item = config[status] || config.pending_screening;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${item.className}`}
-    >
+    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${item.className}`}>
       {item.icon}
       {item.label}
     </span>
@@ -180,81 +247,65 @@ const getStatusBadge = (status) => {
 const BloodStock = () => {
   const [expiringUnits, setExpiringUnits] = useState([]);
   const [bloodUnits, setBloodUnits] = useState([]);
+  const [hospitalOptions, setHospitalOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortOrder, setSortOrder] = useState("newest");
-  const [componentFilter, setComponentFilter] = useState("all");
   const [bloodTypeFilter, setBloodTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [receiveForm, setReceiveForm] = useState(emptyReceiveForm);
-  const [issueForm, setIssueForm] = useState(emptyIssueForm);
-  const [selectedIssueUnits, setSelectedIssueUnits] = useState([]);
-  const [customIssueVolume, setCustomIssueVolume] = useState(false);
-  const [issueDraft, setIssueDraft] = useState({
-    bloodType: "",
-    requestedVolume: "",
-    componentType: "whole_blood",
-  });
 
+  const [issueForm, setIssueForm] = useState(emptyIssueForm);
+  const [issueDraft, setIssueDraft] = useState({ bloodType: "", requestedVolume: "" });
   const [issueCart, setIssueCart] = useState([]);
   const [issuePreview, setIssuePreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [screeningForm, setScreeningForm] = useState(null);
+
   const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
   const [barcodeValue, setBarcodeValue] = useState("");
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [scannedUnit, setScannedUnit] = useState(null);
   const [barcodePreview, setBarcodePreview] = useState(null);
-  const [componentUnit, setComponentUnit] = useState(null);
-  const [componentSubmitting, setComponentSubmitting] = useState(false);
-  const [componentDetails, setComponentDetails] = useState(emptyComponentDetails);
-  const [selectedComponents, setSelectedComponents] = useState(
-    bloodComponents.map((component) => component.key)
-  );
-  const [hospitalOptions, setHospitalOptions] = useState([]);
+
+  const [qrImportModalOpen, setQrImportModalOpen] = useState(false);
+  const [qrImageLoading, setQrImageLoading] = useState(false);
+  const [qrRawText, setQrRawText] = useState("");
+  const [qrParsedPreview, setQrParsedPreview] = useState(null);
 
   const summary = useMemo(() => {
-    const storageStatuses = new Set([
-      ...pendingStatusValues,
-      "qualified",
-      "available",
-    ]);
+    const storageStatuses = new Set([...pendingStatusValues, "qualified", "available"]);
 
     return {
-      total: bloodUnits.filter((u) => storageStatuses.has(u.status)).length,
-      pending: bloodUnits.filter((u) => pendingStatusValues.has(u.status)).length,
-      available: bloodUnits.filter((u) => u.status === "available").length,
-      issued: bloodUnits.filter((u) => u.status === "issued").length,
+      total: bloodUnits.filter((unit) => storageStatuses.has(unit.status)).length,
+      pending: bloodUnits.filter((unit) => pendingStatusValues.has(unit.status)).length,
+      available: bloodUnits.filter((unit) => unit.status === "available").length,
+      issued: bloodUnits.filter((unit) => unit.status === "issued").length,
     };
   }, [bloodUnits]);
 
   const filteredUnits = useMemo(() => {
     return bloodUnits
       .filter((unit) => {
-        const unitComponent = unit.componentType || "whole_blood";
-        const matchesComponent =
-          componentFilter === "all" || unitComponent === componentFilter;
-        const matchesBloodType =
-          bloodTypeFilter === "all" || unit.bloodType === bloodTypeFilter;
+        const matchesBloodType = bloodTypeFilter === "all" || unit.bloodType === bloodTypeFilter;
         const matchesStatus =
           statusFilter === "all" ||
-          (statusFilter === "pending"
-            ? pendingStatusValues.has(unit.status)
-            : unit.status === statusFilter);
+          (statusFilter === "pending" ? pendingStatusValues.has(unit.status) : unit.status === statusFilter);
 
-        return matchesComponent && matchesBloodType && matchesStatus;
+        return matchesBloodType && matchesStatus;
       })
       .sort((first, second) => {
         const firstDate = new Date(first.createdAt || first.collectionDate || 0).getTime();
         const secondDate = new Date(second.createdAt || second.collectionDate || 0).getTime();
         return sortOrder === "newest" ? secondDate - firstDate : firstDate - secondDate;
       });
-  }, [bloodUnits, componentFilter, bloodTypeFilter, statusFilter, sortOrder]);
+  }, [bloodUnits, bloodTypeFilter, statusFilter, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUnits.length / pageSize));
   const paginatedUnits = useMemo(() => {
@@ -266,54 +317,42 @@ const BloodStock = () => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
-  const requestedVolume = Number(issueForm.requestedVolume || 0);
-
-  const totalSelectedVolume = selectedIssueUnits.reduce(
-    (sum, unit) => sum + (unit.quantity || 0),
-    0
-  );
-
-  const isIssueEnough =
-    selectedIssueUnits.length > 0 && totalSelectedVolume >= requestedVolume;
-
-
-
   const fetchExpiringUnits = async () => {
     try {
       const token = getToken();
       const { data } = await axios.get(`${API_URL}/blood/check-expiry?threshold=3`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (data.success) setExpiringUnits(data.expiringUnits || []);
+
+      if (data.success) setExpiringUnits(data.expiringUnits || data.data?.expiringUnits || []);
     } catch (err) {
       console.error("Check Blood Expiry Error:", err);
     }
   };
+
+  const fetchHospitals = async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/hospitals`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+
+      setHospitalOptions(data.hospitals || data.data || []);
+    } catch (err) {
+      console.warn("Không thể tải danh sách bệnh viện:", err?.response?.data || err);
+    }
+  };
+
   const fetchBloodUnits = async () => {
     try {
       setLoading(true);
-
       const token = getToken();
 
       const { data } = await axios.get(`${API_URL}/blood/units`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      const units = data.data || [];
-      setBloodUnits(units);
-      // fetch hospitals for issue select
-      try {
-        const { data: hospitalsData } = await axios.get(`${API_URL}/hospitals`, {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        });
-        setHospitalOptions(hospitalsData.hospitals || []);
-      } catch (err) {
-        console.warn("Không thể tải danh sách bệnh viện:", err?.response?.data || err);
-      }
-
-
+      setBloodUnits(data.data || data.items || []);
+      await fetchHospitals();
     } catch (error) {
       console.error("Fetch Blood Units Error:", error.response?.data || error);
       alert(error.response?.data?.message || "Không thể tải danh sách túi máu");
@@ -328,6 +367,11 @@ const BloodStock = () => {
   }, []);
 
   const validateReceiveForm = () => {
+    if (!receiveForm.unitCode.trim()) {
+      alert("Vui lòng nhập hoặc quét mã túi máu");
+      return false;
+    }
+
     if (!receiveForm.bloodType) {
       alert("Vui lòng chọn nhóm máu");
       return false;
@@ -346,18 +390,51 @@ const BloodStock = () => {
     return true;
   };
 
+  const handleQrImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setQrImageLoading(true);
+
+      const scanner = new Html5Qrcode("qr-image-reader");
+      const decodedText = await scanner.scanFile(file, true);
+
+      setQrRawText(decodedText);
+
+      const parsed = parseBloodQrText(decodedText);
+      setQrParsedPreview(parsed);
+
+      setReceiveForm((current) => ({
+        ...current,
+        unitCode: parsed.unitCode || current.unitCode,
+        bloodType: parsed.bloodType || current.bloodType,
+        volume: parsed.volume || current.volume,
+        collectionDate: parsed.collectionDate || current.collectionDate,
+      }));
+
+      alert("Đã đọc QR/barcode và tự điền thông tin. Vui lòng kiểm tra lại hạn dùng trước khi tạo túi máu.");
+    } catch (error) {
+      console.error("Read QR Image Error:", error);
+      alert("Không đọc được QR/barcode từ ảnh này. Vui lòng thử ảnh rõ hơn hoặc nhập thông tin thủ công.");
+    } finally {
+      setQrImageLoading(false);
+      event.target.value = "";
+    }
+  };
+
   const handleReceiveBlood = async () => {
     if (!validateReceiveForm()) return;
 
-
     try {
       setSubmitting(true);
-
       const token = getToken();
 
-      const res = await axios.post(
+      await axios.post(
         `${API_URL}/blood/units`,
         {
+          unitCode: receiveForm.unitCode.trim(),
+          barcode: receiveForm.unitCode.trim(),
           bloodType: receiveForm.bloodType,
           quantity: Number(receiveForm.volume),
           collectionDate: receiveForm.collectionDate,
@@ -371,9 +448,10 @@ const BloodStock = () => {
         }
       );
 
-
       setReceiveForm(emptyReceiveForm);
-      await fetchBloodUnits();
+      setQrRawText("");
+      setQrParsedPreview(null);
+      await Promise.all([fetchBloodUnits(), fetchExpiringUnits()]);
     } catch (error) {
       console.error("Create Blood Unit Error:", error.response?.data || error);
       alert(error.response?.data?.message || "Không thể tạo túi máu");
@@ -396,22 +474,14 @@ const BloodStock = () => {
   const handleSaveScreening = async () => {
     try {
       if (!selectedUnit?._id) return;
-
       const token = getToken();
 
-      await axios.patch(
-        `${API_URL}/blood/units/${selectedUnit._id}/screening`,
-        screeningForm,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      await axios.patch(`${API_URL}/blood/units/${selectedUnit._id}/screening`, screeningForm, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       setSelectedUnit(null);
       setScreeningForm(null);
-
       await fetchBloodUnits();
     } catch (error) {
       console.error("Update Screening Error:", error.response?.data || error);
@@ -422,17 +492,7 @@ const BloodStock = () => {
   const handleImportToStock = async (id) => {
     try {
       const token = getToken();
-
-      await axios.patch(
-        `${API_URL}/blood/units/${id}/import`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
+      await axios.patch(`${API_URL}/blood/units/${id}/import`, {}, { headers: { Authorization: `Bearer ${token}` } });
       await Promise.all([fetchBloodUnits(), fetchExpiringUnits()]);
     } catch (error) {
       console.error("Import Blood Unit Error:", error.response?.data || error);
@@ -443,17 +503,7 @@ const BloodStock = () => {
   const handleDiscard = async (id) => {
     try {
       const token = getToken();
-
-      await axios.patch(
-        `${API_URL}/blood/units/${id}/discard`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
+      await axios.patch(`${API_URL}/blood/units/${id}/discard`, {}, { headers: { Authorization: `Bearer ${token}` } });
       await Promise.all([fetchBloodUnits(), fetchExpiringUnits()]);
     } catch (error) {
       console.error("Discard Blood Unit Error:", error.response?.data || error);
@@ -461,16 +511,7 @@ const BloodStock = () => {
     }
   };
 
-  const handleAutoSelectUnits = () => {
-    // Auto-select is now handled on server when issuing multiple items.
-    alert('Tự động chọn đã được dời sang server khi xuất nhiều mục. Vui lòng dùng nút Xác nhận xuất kho.');
-  };
   const handleAddToIssueCart = () => {
-    if (!issueDraft.componentType) {
-      alert("Vui lòng chọn chế phẩm máu");
-      return;
-    }
-
     if (!issueDraft.bloodType) {
       alert("Vui lòng chọn nhóm máu");
       return;
@@ -482,26 +523,17 @@ const BloodStock = () => {
     }
 
     const newItem = {
-      componentType: issueDraft.componentType,
       bloodType: issueDraft.bloodType,
       requestedVolume: Number(issueDraft.requestedVolume),
     };
 
     setIssueCart((current) => {
-      const existedIndex = current.findIndex(
-        (item) =>
-          item.componentType === newItem.componentType &&
-          item.bloodType === newItem.bloodType
-      );
+      const existedIndex = current.findIndex((item) => item.bloodType === newItem.bloodType);
 
       if (existedIndex >= 0) {
         return current.map((item, index) =>
           index === existedIndex
-            ? {
-              ...item,
-              requestedVolume:
-                Number(item.requestedVolume) + Number(newItem.requestedVolume),
-            }
+            ? { ...item, requestedVolume: Number(item.requestedVolume) + Number(newItem.requestedVolume) }
             : item
         );
       }
@@ -509,44 +541,39 @@ const BloodStock = () => {
       return [...current, newItem];
     });
 
-    setIssueDraft({
-      bloodType: "",
-      requestedVolume: "",
-      componentType: "whole_blood",
-    });
+    setIssueDraft({ bloodType: "", requestedVolume: "" });
+    setIssuePreview(null);
+  };
 
-    setIssuePreview(null);
-  };
   const handleRemoveFromIssueCart = (index) => {
-    setIssueCart((current) => current.filter((_, i) => i !== index));
+    setIssueCart((current) => current.filter((_, itemIndex) => itemIndex !== index));
     setIssuePreview(null);
   };
+
   const handleIssueHospitalChange = (hospitalId) => {
-    const hospital = hospitalOptions.find((item) => String(item._id) === String(hospitalId));
-    const request = hospital?.nextRequest || null;
+    const hospital = hospitalOptions.find((item) => String(item._id || item.id) === String(hospitalId));
+    const request = hospital?.nextRequest || hospital?.requests?.[0] || null;
 
     setIssueForm({
       ...issueForm,
-      hospitalId: hospital?._id || "",
-      hospitalName: hospital?.name || "",
-      requestId: request?._id || "",
-      reason: request
-        ? `Cap mau theo yeu cau ${request._id}`
-        : issueForm.reason,
+      hospitalId: hospital?._id || hospital?.id || "",
+      hospitalName: hospital?.name || hospital?.facilityName || "",
+      requestId: request?._id || request?.id || "",
+      reason: request ? `Cấp máu theo yêu cầu ${request._id || request.id}` : issueForm.reason,
     });
 
     if (request) {
       setIssueCart([
         {
-          componentType: "whole_blood",
           bloodType: request.bloodType,
-          requestedVolume: request.requestedVolume || Number(request.units || 0) * 450,
+          requestedVolume: request.requestedVolume || Number(request.units || request.quantity || 0) * 450,
         },
       ]);
     }
 
     setIssuePreview(null);
   };
+
   const handlePreviewIssueCart = async () => {
     if (!issueForm.hospitalName) {
       alert("Vui lòng chọn bệnh viện nhận máu");
@@ -560,7 +587,6 @@ const BloodStock = () => {
 
     try {
       setPreviewLoading(true);
-
       const token = getToken();
 
       const { data } = await axios.post(
@@ -572,14 +598,10 @@ const BloodStock = () => {
           reason: issueForm.reason || "Cấp máu theo yêu cầu",
           items: issueCart,
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setIssuePreview(data.data);
+      setIssuePreview(data.data || data);
     } catch (error) {
       console.error("Preview Issue Error:", error.response?.data || error);
       alert(error.response?.data?.message || "Không thể kiểm tra tồn kho");
@@ -587,8 +609,9 @@ const BloodStock = () => {
       setPreviewLoading(false);
     }
   };
-  const handleIssueBlood = async (e) => {
-    e.preventDefault();
+
+  const handleIssueBlood = async (event) => {
+    event.preventDefault();
 
     if (!issueForm.hospitalName) {
       alert("Vui lòng chọn bệnh viện nhận máu");
@@ -605,31 +628,25 @@ const BloodStock = () => {
       return;
     }
 
-    const payload = {
-      hospitalId: issueForm.hospitalId,
-      hospitalName: issueForm.hospitalName,
-      requestId: issueForm.requestId,
-      reason: issueForm.reason || "Cấp máu theo yêu cầu",
-      items: issueCart,
-    };
-
     try {
       const token = getToken();
 
-      const { data } = await axios.patch(`${API_URL}/blood/units/issue`, payload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
+      const { data } = await axios.patch(
+        `${API_URL}/blood/units/issue`,
+        {
+          hospitalId: issueForm.hospitalId,
+          hospitalName: issueForm.hospitalName,
+          requestId: issueForm.requestId,
+          reason: issueForm.reason || "Cấp máu theo yêu cầu",
+          items: issueCart,
         },
-      });
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       alert(data.message || "Xuất máu thành công");
 
       setIssueForm(emptyIssueForm);
-      setIssueDraft({
-        bloodType: "",
-        requestedVolume: "",
-        componentType: "whole_blood",
-      });
+      setIssueDraft({ bloodType: "", requestedVolume: "" });
       setIssueCart([]);
       setIssuePreview(null);
 
@@ -639,54 +656,8 @@ const BloodStock = () => {
       alert(error.response?.data?.message || "Không thể xuất máu");
     }
   };
-  const canConfirmIssue =
-    issueForm.hospitalName &&
-    issueCart.length > 0 &&
-    issuePreview?.canIssue;
-  const handleToggleComponent = (componentKey) => {
-    setSelectedComponents((current) =>
-      current.includes(componentKey)
-        ? current.filter((key) => key !== componentKey)
-        : [...current, componentKey]
-    );
-  };
 
-  const handlePreviewSplit = async () => {
-    if (selectedComponents.length === 0) {
-      alert("Vui lòng chọn ít nhất một chế phẩm máu");
-      return;
-    }
-
-    const components = selectedComponents.map((type) => ({
-      type,
-      quantity: Number(componentDetails[type]?.quantity),
-      expiryDate: componentDetails[type]?.expiryDate,
-    }));
-
-    if (components.some((component) => !component.quantity || !component.expiryDate)) {
-      alert("Vui lòng nhập dung tích và hạn sử dụng cho từng chế phẩm");
-      return;
-    }
-
-    try {
-      setComponentSubmitting(true);
-      const token = getToken();
-      await axios.post(
-        `${API_URL}/blood/units/${componentUnit._id}/components`,
-        { components },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setComponentUnit(null);
-      setComponentDetails(emptyComponentDetails);
-      await fetchBloodUnits();
-      alert("Tách chế phẩm và tạo barcode thành công");
-    } catch (error) {
-      console.error("Split Blood Components Error:", error.response?.data || error);
-      alert(error.response?.data?.message || "Không thể tách chế phẩm máu");
-    } finally {
-      setComponentSubmitting(false);
-    }
-  };
+  const canConfirmIssue = issueForm.hospitalName && issueCart.length > 0 && issuePreview?.canIssue;
 
   const handleBarcodePreview = async () => {
     if (!barcodeValue.trim()) {
@@ -698,10 +669,11 @@ const BloodStock = () => {
       setBarcodeLoading(true);
       setScannedUnit(null);
       const token = getToken();
-      const { data } = await axios.get(
-        `${API_URL}/blood/units/barcode/${encodeURIComponent(barcodeValue.trim())}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+
+      const { data } = await axios.get(`${API_URL}/blood/units/barcode/${encodeURIComponent(barcodeValue.trim())}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
       setScannedUnit(data.data);
     } catch (error) {
       console.error("Lookup Barcode Error:", error.response?.data || error);
@@ -717,6 +689,7 @@ const BloodStock = () => {
       const { data } = await axios.get(`${API_URL}/blood/units/${unit._id}/code`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
       setBarcodePreview({ ...data.data, unit });
     } catch (error) {
       console.error("Load Barcode Image Error:", error.response?.data || error);
@@ -744,71 +717,90 @@ const BloodStock = () => {
               <Droplets className="w-7 h-7 text-red-600" />
               Quản lý đơn vị máu
             </h1>
-
             <p className="text-gray-600 mt-2">
-              Theo dõi từng túi máu theo mã định danh, Barcode, chế phẩm máu,
-              xét nghiệm sàng lọc và xuất kho theo yêu cầu bệnh viện.
+              Tiếp nhận máu toàn phần, sàng lọc, nhập kho và xuất máu theo yêu cầu bệnh viện.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setBarcodeModalOpen(true)}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-3 font-medium text-white shadow-sm hover:bg-gray-800"
-          >
-            <ScanLine className="h-5 w-5" />
-            Quét mã Barcode
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setQrImportModalOpen(true)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 font-medium text-white shadow-sm hover:bg-red-700"
+            >
+              <ScanLine className="h-5 w-5" />
+              Nhập túi máu bằng QR
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setBarcodeModalOpen(true)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-3 font-medium text-white shadow-sm hover:bg-gray-800"
+            >
+              <QrCode className="h-5 w-5" />
+              Tra cứu Barcode
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-2xl border border-red-100 p-5">
           <p className="text-sm text-gray-500">Tổng đơn vị trong kho</p>
-          <p className="text-2xl font-bold text-gray-800 mt-1">
-            {summary.total}
-          </p>
+          <p className="text-2xl font-bold text-gray-800 mt-1">{summary.total}</p>
         </div>
-
         <div className="bg-white rounded-2xl border border-red-100 p-5">
           <p className="text-sm text-gray-500">Chờ xử lý</p>
-          <p className="text-2xl font-bold text-amber-600 mt-1">
-            {summary.pending}
-          </p>
+          <p className="text-2xl font-bold text-amber-600 mt-1">{summary.pending}</p>
         </div>
-
         <div className="bg-white rounded-2xl border border-red-100 p-5">
           <p className="text-sm text-gray-500">Sẵn sàng trong kho</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            {summary.available}
-          </p>
+          <p className="text-2xl font-bold text-green-600 mt-1">{summary.available}</p>
         </div>
-
         <div className="bg-white rounded-2xl border border-red-100 p-5">
           <p className="text-sm text-gray-500">Đã xuất kho</p>
-          <p className="text-2xl font-bold text-purple-600 mt-1">
-            {summary.issued}
-          </p>
+          <p className="text-2xl font-bold text-purple-600 mt-1">{summary.issued}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
-            <PlusCircle className="w-5 h-5 text-red-600" />
-            Tiếp nhận túi máu mới
-          </h2>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-red-600" />
+                Tiếp nhận túi máu mới
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Có thể nhập thủ công hoặc dùng QR để tự động điền thông tin túi máu.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setQrImportModalOpen(true)}
+              className="hidden md:inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
+            >
+              <ScanLine className="h-4 w-4" />
+              Nhập bằng QR
+            </button>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mã túi máu</label>
+              <input
+                value={receiveForm.unitCode}
+                onChange={(event) => setReceiveForm({ ...receiveForm, unitCode: event.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="Ví dụ: BLOOD-1780562179157-bf56d7-350"
+              />
+            </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nhóm máu
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nhóm máu</label>
               <select
                 value={receiveForm.bloodType}
-                onChange={(e) =>
-                  setReceiveForm({ ...receiveForm, bloodType: e.target.value })
-                }
+                onChange={(event) => setReceiveForm({ ...receiveForm, bloodType: event.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
               >
                 <option value="">Chọn nhóm máu</option>
@@ -821,14 +813,10 @@ const BloodStock = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Dung tích ml
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dung tích ml</label>
               <select
                 value={receiveForm.volume}
-                onChange={(e) =>
-                  setReceiveForm({ ...receiveForm, volume: e.target.value })
-                }
+                onChange={(event) => setReceiveForm({ ...receiveForm, volume: event.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
               >
                 <option value="">Chọn dung tích</option>
@@ -839,32 +827,21 @@ const BloodStock = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Ngày lấy máu
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ngày lấy máu</label>
               <input
                 type="date"
                 value={receiveForm.collectionDate}
-                onChange={(e) =>
-                  setReceiveForm({
-                    ...receiveForm,
-                    collectionDate: e.target.value,
-                  })
-                }
+                onChange={(event) => setReceiveForm({ ...receiveForm, collectionDate: event.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Hạn dùng
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hạn dùng</label>
               <input
                 type="date"
                 value={receiveForm.expiryDate}
-                onChange={(e) =>
-                  setReceiveForm({ ...receiveForm, expiryDate: e.target.value })
-                }
+                onChange={(event) => setReceiveForm({ ...receiveForm, expiryDate: event.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
               />
             </div>
@@ -876,11 +853,7 @@ const BloodStock = () => {
                 disabled={submitting}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:bg-gray-300"
               >
-                {submitting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <PlusCircle className="w-4 h-4" />
-                )}
+                {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <PlusCircle className="w-4 h-4" />}
                 {submitting ? "Đang tạo..." : "Tạo túi máu"}
               </button>
             </div>
@@ -895,40 +868,14 @@ const BloodStock = () => {
 
           <form onSubmit={handleIssueBlood} className="space-y-4">
             <div className="space-y-4">
-              <p className="text-sm font-medium text-gray-700">
-                Thêm chế phẩm vào giỏ xuất
-              </p>
+              <p className="text-sm font-medium text-gray-700">Thêm máu vào giỏ xuất</p>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Chế phẩm
-                  </label>
-                  <select
-                    value={issueDraft.componentType}
-                    onChange={(e) =>
-                      setIssueDraft({ ...issueDraft, componentType: e.target.value })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  >
-                    <option value="whole_blood">Máu toàn phần</option>
-                    {bloodComponents.map((component) => (
-                      <option key={component.key} value={component.key}>
-                        {component.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Nhóm máu
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nhóm máu</label>
                   <select
                     value={issueDraft.bloodType}
-                    onChange={(e) =>
-                      setIssueDraft({ ...issueDraft, bloodType: e.target.value })
-                    }
+                    onChange={(event) => setIssueDraft({ ...issueDraft, bloodType: event.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2"
                   >
                     <option value="">Chọn nhóm máu</option>
@@ -941,16 +888,12 @@ const BloodStock = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Số ml
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Số ml</label>
                   <input
                     type="number"
                     min="1"
                     value={issueDraft.requestedVolume}
-                    onChange={(e) =>
-                      setIssueDraft({ ...issueDraft, requestedVolume: e.target.value })
-                    }
+                    onChange={(event) => setIssueDraft({ ...issueDraft, requestedVolume: event.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2"
                     placeholder="Ví dụ: 500"
                   />
@@ -968,32 +911,22 @@ const BloodStock = () => {
 
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-gray-700">
-                    Giỏ xuất kho
-                  </p>
-                  <span className="text-xs text-gray-500">
-                    {issueCart.length} dòng
-                  </span>
+                  <p className="text-sm font-semibold text-gray-700">Giỏ xuất kho</p>
+                  <span className="text-xs text-gray-500">{issueCart.length} dòng</span>
                 </div>
 
                 {issueCart.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    Chưa có chế phẩm nào trong giỏ xuất.
-                  </p>
+                  <p className="text-sm text-gray-500">Chưa có máu nào trong giỏ xuất.</p>
                 ) : (
                   <div className="space-y-2">
                     {issueCart.map((item, index) => (
                       <div
-                        key={`${item.componentType}-${item.bloodType}-${index}`}
+                        key={`${item.bloodType}-${index}`}
                         className="flex items-center justify-between gap-3 rounded-lg bg-white border border-gray-200 px-3 py-2"
                       >
                         <div>
-                          <p className="text-sm font-medium text-gray-800">
-                            {componentLabels[item.componentType]} - Nhóm {item.bloodType}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Số lượng yêu cầu: {item.requestedVolume} ml
-                          </p>
+                          <p className="text-sm font-medium text-gray-800">Máu toàn phần - Nhóm {item.bloodType}</p>
+                          <p className="text-xs text-gray-500">Số lượng yêu cầu: {item.requestedVolume} ml</p>
                         </div>
 
                         <button
@@ -1015,32 +948,19 @@ const BloodStock = () => {
                 disabled={previewLoading || issueCart.length === 0 || !issueForm.hospitalName}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-red-600 hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
               >
-                {previewLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <SearchCheck className="w-4 h-4" />
-                )}
+                {previewLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <SearchCheck className="w-4 h-4" />}
                 {previewLoading ? "Đang kiểm tra tồn kho..." : "Kiểm tra tồn kho"}
               </button>
 
               {issuePreview && (
-                <div
-                  className={`rounded-xl border p-4 text-sm ${issuePreview.canIssue
-                    ? "border-green-200 bg-green-50 text-green-700"
-                    : "border-red-200 bg-red-50 text-red-700"
-                    }`}
-                >
-                  <p className="font-semibold">
-                    {issuePreview.canIssue
-                      ? "Đủ tồn kho để xuất máu"
-                      : "Không đủ tồn kho"}
-                  </p>
+                <div className={`rounded-xl border p-4 text-sm ${issuePreview.canIssue ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+                  <p className="font-semibold">{issuePreview.canIssue ? "Đủ tồn kho để xuất máu" : "Không đủ tồn kho"}</p>
 
                   {!issuePreview.canIssue && issuePreview.missingItems?.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {issuePreview.missingItems.map((item, index) => (
-                        <p key={`${item.componentType}-${item.bloodType}-${index}`}>
-                          Thiếu {item.missingVolume} ml - {componentLabels[item.componentType]} nhóm {item.bloodType}
+                        <p key={`${item.bloodType}-${index}`}>
+                          Thiếu {item.missingVolume} ml - Nhóm {item.bloodType}
                         </p>
                       ))}
                     </div>
@@ -1049,8 +969,8 @@ const BloodStock = () => {
                   {issuePreview.canIssue && issuePreview.plan?.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {issuePreview.plan.map((item, index) => (
-                        <p key={`${item.componentType}-${item.bloodType}-${index}`}>
-                          {componentLabels[item.componentType]} nhóm {item.bloodType}: yêu cầu {item.requestedVolume} ml, phân bổ {item.allocatedVolume} ml
+                        <p key={`${item.bloodType}-${index}`}>
+                          Nhóm {item.bloodType}: yêu cầu {item.requestedVolume} ml, phân bổ {item.allocatedVolume || item.selectedVolume} ml
                         </p>
                       ))}
                     </div>
@@ -1060,50 +980,33 @@ const BloodStock = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Bệnh viện nhận
-              </label>
-
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bệnh viện nhận</label>
               <select
                 required
                 value={issueForm.hospitalId}
-                onChange={(e) =>
-                  handleIssueHospitalChange(e.target.value)
-                }
+                onChange={(event) => handleIssueHospitalChange(event.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
               >
                 <option value="">Chọn bệnh viện trong hệ thống</option>
                 {hospitalOptions.map((hospital) => (
-                  <option key={hospital._id} value={hospital._id}>
-                    {hospital.name}
-                    {hospital.hasPendingRequest ? " (Có yêu cầu)" : ""}
+                  <option key={hospital._id || hospital.id} value={hospital._id || hospital.id}>
+                    {hospital.name || hospital.facilityName}
+                    {hospital.hasPendingRequest || hospital.hasOpenRequests ? " (Có yêu cầu)" : ""}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Lý do xuất
-              </label>
-              {issueForm.requestId && (
-                <p className="mb-2 text-xs text-green-600">
-                  Dang dong bo voi yeu cau {issueForm.requestId}
-                </p>
-              )}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lý do xuất</label>
+              {issueForm.requestId && <p className="mb-2 text-xs text-green-600">Đang đồng bộ với yêu cầu {issueForm.requestId}</p>}
               <input
                 value={issueForm.reason}
-                onChange={(e) =>
-                  setIssueForm({ ...issueForm, reason: e.target.value })
-                }
+                onChange={(event) => setIssueForm({ ...issueForm, reason: event.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
                 placeholder="Cấp máu theo yêu cầu"
               />
             </div>
-
-
-
-
 
             <button
               disabled={!canConfirmIssue}
@@ -1118,10 +1021,7 @@ const BloodStock = () => {
 
       <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-gray-800">
-            Danh sách túi máu
-          </h2>
-
+          <h2 className="text-lg font-semibold text-gray-800">Danh sách túi máu</h2>
           <span className="text-sm text-gray-500">
             Hiển thị: {filteredUnits.length}/{bloodUnits.length} đơn vị
           </span>
@@ -1137,7 +1037,6 @@ const BloodStock = () => {
               type="button"
               onClick={() => {
                 setSortOrder("newest");
-                setComponentFilter("all");
                 setBloodTypeFilter("all");
                 setStatusFilter("all");
                 setCurrentPage(1);
@@ -1148,7 +1047,7 @@ const BloodStock = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Thời gian</label>
               <select
@@ -1165,23 +1064,6 @@ const BloodStock = () => {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Loại máu</label>
-              <select
-                value={componentFilter}
-                onChange={(event) => {
-                  setComponentFilter(event.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-              >
-                <option value="all">Tất cả các loại</option>
-                {Object.entries(componentLabels).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Nhóm máu</label>
               <select
                 value={bloodTypeFilter}
@@ -1193,7 +1075,9 @@ const BloodStock = () => {
               >
                 <option value="all">Tất cả nhóm máu</option>
                 {bloodTypes.map((type) => (
-                  <option key={type} value={type}>{type}</option>
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1210,7 +1094,9 @@ const BloodStock = () => {
               >
                 <option value="all">Tất cả trạng thái</option>
                 {statusFilterOptions.map((status) => (
-                  <option key={status.value} value={status.value}>{status.label}</option>
+                  <option key={status.value} value={status.value}>
+                    {status.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1218,13 +1104,9 @@ const BloodStock = () => {
         </div>
 
         {bloodUnits.length === 0 ? (
-          <div className="py-10 text-center text-gray-500">
-            Chưa có túi máu nào trong hệ thống.
-          </div>
+          <div className="py-10 text-center text-gray-500">Chưa có túi máu nào trong hệ thống.</div>
         ) : filteredUnits.length === 0 ? (
-          <div className="py-10 text-center text-gray-500">
-            Không có đơn vị máu phù hợp với bộ lọc hiện tại.
-          </div>
+          <div className="py-10 text-center text-gray-500">Không có đơn vị máu phù hợp với bộ lọc hiện tại.</div>
         ) : (
           <>
             {expiringUnits.length > 0 && (
@@ -1241,68 +1123,31 @@ const BloodStock = () => {
                 </ul>
               </div>
             )}
+
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1150px]">
+              <table className="w-full min-w-[1000px]">
                 <thead>
                   <tr className="bg-gray-50 border-b">
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Mã túi
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      QR
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Nhóm máu
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Dung tích
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Ngày lấy
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Hạn dùng
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Sàng lọc
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Trạng thái
-                    </th>
-                    <th className="text-left p-3 text-sm font-medium text-gray-700">
-                      Thao tác
-                    </th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Mã túi</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">QR</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Nhóm máu</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Dung tích</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Ngày lấy</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Hạn dùng</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Sàng lọc</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Trạng thái</th>
+                    <th className="text-left p-3 text-sm font-medium text-gray-700">Thao tác</th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {paginatedUnits.map((unit) => (
-                    <tr
-                      key={unit._id}
-                      className="border-b hover:bg-gray-50 align-top"
-                    >
+                    <tr key={unit._id} className="border-b hover:bg-gray-50 align-top">
                       <td className="p-3">
-                        <span className="font-semibold text-gray-800">
-                          {unit.barcode || unit.unitCode || unit._id}
-                        </span>
-
-                        <p className="mt-1 text-xs text-gray-500">
-                          {componentLabels[unit.componentType || "whole_blood"]}
-                        </p>
-
-                        {unit.parentBarcode && (
-                          <p className="mt-1 text-xs text-blue-600">
-                            ParentID: {unit.parentBarcode}
-                          </p>
-                        )}
-
+                        <span className="font-semibold text-gray-800">{unit.barcode || unit.unitCode || unit._id}</span>
                         {unit.issuedTo && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Đã xuất cho: {unit.issuedTo}
-                          </p>
+                          <p className="text-xs text-gray-500 mt-1">Đã xuất cho: {unit.issuedToName || unit.issuedTo}</p>
                         )}
                       </td>
-
                       <td className="p-3">
                         <button
                           type="button"
@@ -1313,43 +1158,23 @@ const BloodStock = () => {
                           Xem mã
                         </button>
                       </td>
-
                       <td className="p-3">
-                        <span className="font-bold text-red-600">
-                          {unit.bloodType}
-                        </span>
+                        <span className="font-bold text-red-600">{unit.bloodType}</span>
                       </td>
-
                       <td className="p-3 text-gray-700">{unit.quantity} ml</td>
-
-                      <td className="p-3 text-gray-700">
-                        {formatDate(unit.collectionDate || unit.expirationDate)}
-                      </td>
-
-                      <td className="p-3 text-gray-700">
-                        {formatDate(unit.expiryDate || unit.expirationDate)}
-                      </td>
-
+                      <td className="p-3 text-gray-700">{formatDate(unit.collectionDate || unit.createdAt)}</td>
+                      <td className="p-3 text-gray-700">{formatDate(unit.expiryDate || unit.expirationDate)}</td>
                       <td className="p-3">
                         <div className="space-y-2 min-w-[150px]">
                           {screeningFields.map((field) => (
-                            <div
-                              key={field.key}
-                              className="flex items-center justify-between gap-3"
-                            >
-                              <span className="text-sm text-gray-600">
-                                {field.label}
-                              </span>
-                              {getScreeningBadge(
-                                unit.screeningResult?.[field.key]
-                              )}
+                            <div key={field.key} className="flex items-center justify-between gap-3">
+                              <span className="text-sm text-gray-600">{field.label}</span>
+                              {getScreeningBadge(unit.screeningResult?.[field.key])}
                             </div>
                           ))}
                         </div>
                       </td>
-
                       <td className="p-3">{getStatusBadge(unit.status)}</td>
-
                       <td className="p-3">
                         <div className="flex flex-col gap-2">
                           <button
@@ -1370,33 +1195,15 @@ const BloodStock = () => {
                             </button>
                           )}
 
-                          {(unit.status === "qualified" || unit.status === "available") && (unit.componentType === "whole_blood" || !unit.componentType) && (
+                          {(unit.status === "rejected" || pendingStatusValues.has(unit.status)) && (
                             <button
-                              type="button"
-                              onClick={() => {
-                                setComponentUnit(unit);
-                                setSelectedComponents(
-                                  bloodComponents.map((component) => component.key)
-                                );
-                                setComponentDetails(emptyComponentDetails);
-                              }}
-                              className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                              onClick={() => handleDiscard(unit._id)}
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50"
                             >
-                              <Layers3 className="h-4 w-4" />
-                              Tách chế phẩm
+                              <Trash2 className="w-4 h-4" />
+                              Loại bỏ
                             </button>
                           )}
-
-                          {(unit.status === "rejected" ||
-                            unit.status === "pending_screening") && (
-                              <button
-                                onClick={() => handleDiscard(unit._id)}
-                                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                Loại bỏ
-                              </button>
-                            )}
                         </div>
                       </td>
                     </tr>
@@ -1404,6 +1211,7 @@ const BloodStock = () => {
                 </tbody>
               </table>
             </div>
+
             <div className="mt-5 flex flex-col gap-4 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <span>Hiển thị</span>
@@ -1416,7 +1224,9 @@ const BloodStock = () => {
                   className="rounded-lg border border-gray-300 bg-white px-3 py-2"
                 >
                   {pageSizeOptions.map((size) => (
-                    <option key={size} value={size}>{size}</option>
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
                   ))}
                 </select>
                 <span>đơn vị mỗi trang</span>
@@ -1452,6 +1262,122 @@ const BloodStock = () => {
         )}
       </div>
 
+      {qrImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b px-6 py-4">
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
+                  <ScanLine className="h-5 w-5 text-red-600" />
+                  Nhập túi máu bằng QR
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Kết nối máy quét QR/barcode hoặc mô phỏng bằng ảnh tem túi máu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrImportModalOpen(false)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Đóng cửa sổ nhập túi máu bằng QR"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-5 p-6 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-2xl border border-gray-200 bg-gray-950 p-5 text-white shadow-inner">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Thiết bị quét QR/Barcode</p>
+                    <p className="mt-1 text-xs text-white/60">Chế độ mô phỏng kết nối máy quét</p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-300">
+                    <span className="h-2 w-2 rounded-full bg-green-400" />
+                    Sẵn sàng
+                  </span>
+                </div>
+
+                <div className="relative flex h-64 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black">
+                  <div className="absolute inset-8 rounded-xl border-2 border-white/70" />
+                  <div className="absolute left-12 right-12 top-1/2 h-0.5 bg-red-500 shadow-[0_0_14px_3px_rgba(239,68,68,0.65)]" />
+                  <div className="text-center text-white/70">
+                    <Camera className="mx-auto mb-3 h-16 w-16" />
+                    <p className="text-sm font-medium">Đưa tem QR/barcode vào vùng quét</p>
+                    <p className="mt-1 text-xs text-white/50">Hỗ trợ máy quét 2D USB hoặc ảnh tem QR</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-medium text-white hover:bg-white/15"
+                  >
+                    <Cable className="h-4 w-4" />
+                    Kết nối máy quét
+                  </button>
+
+                  <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-medium text-white hover:bg-red-700">
+                    {qrImageLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                    {qrImageLoading ? "Đang đọc ảnh..." : "Tải ảnh tem QR"}
+                    <input type="file" accept="image/*" onChange={handleQrImageUpload} disabled={qrImageLoading} className="hidden" />
+                  </label>
+                </div>
+
+                <div id="qr-image-reader" className="hidden" />
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                  <div className="flex items-center gap-2 font-semibold text-red-700">
+                    <ShieldCheck className="h-5 w-5" />
+                    Dữ liệu sau khi quét
+                  </div>
+                  <p className="mt-2 text-sm text-gray-600">
+                    Sau khi đọc QR/barcode, hệ thống sẽ tự điền mã túi máu, nhóm máu, dung tích và ngày lấy máu vào form tiếp nhận.
+                  </p>
+                </div>
+
+                {qrParsedPreview ? (
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 text-sm">
+                    <p className="mb-3 font-semibold text-gray-800">Thông tin nhận diện</p>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-gray-700">
+                      <dt className="text-gray-500">Mã túi máu</dt>
+                      <dd className="break-all font-medium">{qrParsedPreview.unitCode || "Chưa nhận diện"}</dd>
+                      <dt className="text-gray-500">Nhóm máu</dt>
+                      <dd>{qrParsedPreview.bloodType || "Chưa nhận diện"}</dd>
+                      <dt className="text-gray-500">Dung tích</dt>
+                      <dd>{qrParsedPreview.volume ? `${qrParsedPreview.volume} ml` : "Chưa nhận diện"}</dd>
+                      <dt className="text-gray-500">Ngày lấy máu</dt>
+                      <dd>{qrParsedPreview.collectionDate || "Chưa nhận diện"}</dd>
+                    </dl>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+                    Chưa có dữ liệu quét. Chọn “Tải ảnh tem QR” để mô phỏng quét từ ảnh.
+                  </div>
+                )}
+
+                {qrRawText && (
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Nội dung QR/barcode</p>
+                    <p className="break-all text-xs text-gray-600">{qrRawText}</p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setQrImportModalOpen(false)}
+                  className="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800"
+                >
+                  Dùng dữ liệu đã quét
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {barcodePreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -1478,9 +1404,7 @@ const BloodStock = () => {
               <p className="mt-4 break-all rounded-lg bg-gray-50 px-3 py-2 font-mono text-sm font-semibold text-gray-800">
                 {barcodePreview.identifier}
               </p>
-              <p className="mt-2 text-xs text-gray-500">
-                Mã chỉ chứa ID. Thông tin nghiệp vụ được truy vấn từ database sau khi quét.
-              </p>
+              <p className="mt-2 text-xs text-gray-500">Mã chỉ chứa ID. Thông tin nghiệp vụ được truy vấn từ database sau khi quét.</p>
             </div>
           </div>
         </div>
@@ -1493,11 +1417,9 @@ const BloodStock = () => {
               <div>
                 <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
                   <ScanLine className="h-5 w-5 text-red-600" />
-                  Quét mã Barcode
+                  Tra cứu Barcode
                 </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Đưa mã trên túi máu vào vùng quét bên dưới.
-                </p>
+                <p className="mt-1 text-sm text-gray-500">Quét hoặc nhập mã trên túi máu để tra cứu thông tin.</p>
               </div>
               <button
                 type="button"
@@ -1523,14 +1445,12 @@ const BloodStock = () => {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Hoặc nhập mã barcode
-                </label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Hoặc nhập mã barcode</label>
                 <input
                   value={barcodeValue}
                   onChange={(event) => setBarcodeValue(event.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                  placeholder="Ví dụ: BLD-2026-00001"
+                  placeholder="Ví dụ: BLOOD-1780562179157-bf56d7-350"
                 />
               </div>
 
@@ -1540,11 +1460,7 @@ const BloodStock = () => {
                 disabled={barcodeLoading}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 font-medium text-white hover:bg-red-700"
               >
-                {barcodeLoading ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ScanLine className="h-4 w-4" />
-                )}
+                {barcodeLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
                 {barcodeLoading ? "Đang tra cứu..." : "Nhận diện barcode"}
               </button>
 
@@ -1555,147 +1471,17 @@ const BloodStock = () => {
                     Đã tìm thấy đơn vị lưu trữ
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-gray-700">
-                    <dt className="text-gray-500">ID</dt>
+                    <dt className="text-gray-500">Mã túi máu</dt>
                     <dd className="break-all font-medium">{scannedUnit.barcode || scannedUnit.unitCode}</dd>
-                    <dt className="text-gray-500">Loại</dt>
-                    <dd>{componentLabels[scannedUnit.componentType || "whole_blood"]}</dd>
                     <dt className="text-gray-500">Nhóm máu</dt>
                     <dd>{scannedUnit.bloodType}</dd>
+                    <dt className="text-gray-500">Dung tích</dt>
+                    <dd>{scannedUnit.quantity} ml</dd>
                     <dt className="text-gray-500">Trạng thái</dt>
                     <dd>{getStatusBadge(scannedUnit.status)}</dd>
-                    {scannedUnit.parentBarcode && (
-                      <>
-                        <dt className="text-gray-500">ParentID</dt>
-                        <dd className="break-all">{scannedUnit.parentBarcode}</dd>
-                      </>
-                    )}
                   </dl>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {componentUnit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b px-6 py-4">
-              <div>
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
-                  <Layers3 className="h-5 w-5 text-blue-600" />
-                  Tách túi máu thành chế phẩm
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Túi {componentUnit.unitCode || componentUnit._id} · Nhóm {componentUnit.bloodType} · {componentUnit.quantity} ml
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setComponentUnit(null)}
-                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                aria-label="Đóng cửa sổ tách chế phẩm"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <p className="mb-3 text-sm font-medium text-gray-700">
-                Chọn các chế phẩm cần tạo
-              </p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                {bloodComponents.map((component) => {
-                  const checked = selectedComponents.includes(component.key);
-                  return (
-                    <div
-                      key={component.key}
-                      className={`rounded-xl border p-4 transition ${checked ? component.color : "border-gray-200 bg-white text-gray-500"
-                        }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <TestTube className="h-6 w-6" />
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => handleToggleComponent(component.key)}
-                          className="h-4 w-4 accent-red-600"
-                        />
-                      </div>
-                      <p className="mt-4 font-semibold">{component.label}</p>
-                      <p className="mt-1 text-xs opacity-75">Chế phẩm từ máu toàn phần</p>
-
-                      {checked && (
-                        <div className="mt-4 space-y-3 text-gray-700">
-                          <div>
-                            <label className="mb-1 block text-xs font-medium">Dung tích (ml)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={componentDetails[component.key]?.quantity || ""}
-                              onChange={(event) =>
-                                setComponentDetails((current) => ({
-                                  ...current,
-                                  [component.key]: {
-                                    ...current[component.key],
-                                    quantity: event.target.value,
-                                  },
-                                }))
-                              }
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Nhập dung tích"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-medium">Hạn sử dụng</label>
-                            <input
-                              type="date"
-                              value={componentDetails[component.key]?.expiryDate || ""}
-                              onChange={(event) =>
-                                setComponentDetails((current) => ({
-                                  ...current,
-                                  [component.key]: {
-                                    ...current[component.key],
-                                    expiryDate: event.target.value,
-                                  },
-                                }))
-                              }
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-                Mỗi chế phẩm sẽ được cấp ID và QR riêng, đồng thời lưu ParentID để truy vết về túi máu gốc.
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t bg-gray-50 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setComponentUnit(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-100"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={handlePreviewSplit}
-                disabled={componentSubmitting}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-              >
-                {componentSubmitting ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Layers3 className="h-4 w-4" />
-                )}
-                {componentSubmitting ? "Đang xử lý..." : "Xác nhận tách chế phẩm"}
-              </button>
             </div>
           </div>
         </div>
@@ -1705,28 +1491,19 @@ const BloodStock = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-800">
-                Cập nhật sàng lọc
-              </h3>
+              <h3 className="text-lg font-semibold text-gray-800">Cập nhật sàng lọc</h3>
               <p className="text-sm text-gray-500 mt-1">
-                {selectedUnit.unitCode} - {selectedUnit.bloodType}
+                {selectedUnit.unitCode || selectedUnit.barcode} - {selectedUnit.bloodType}
               </p>
             </div>
 
             <div className="p-6 space-y-4">
               {screeningFields.map((field) => (
                 <div key={field.key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {field.label}
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
                   <select
                     value={screeningForm[field.key]}
-                    onChange={(e) =>
-                      setScreeningForm({
-                        ...screeningForm,
-                        [field.key]: e.target.value,
-                      })
-                    }
+                    onChange={(event) => setScreeningForm({ ...screeningForm, [field.key]: event.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2"
                   >
                     <option value="pending">Đang chờ</option>
@@ -1747,11 +1524,7 @@ const BloodStock = () => {
               >
                 Hủy
               </button>
-
-              <button
-                onClick={handleSaveScreening}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
-              >
+              <button onClick={handleSaveScreening} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">
                 Lưu kết quả
               </button>
             </div>
