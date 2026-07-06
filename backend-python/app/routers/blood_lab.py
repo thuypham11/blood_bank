@@ -38,5 +38,12 @@ router.add_api_route("/donor/donate/{id}", controller.mark_donation, methods=["P
 router.add_api_route("/donors/donate/{id}", controller.mark_donation, methods=["POST"])
 router.add_api_route("/donations/recent", controller.get_recent_donations, methods=["GET"])
 
+router.add_api_route("/camps", controller.get_blood_camps, methods=["GET"])
+router.add_api_route("/camps", controller.create_blood_camp, methods=["POST"])
+router.add_api_route("/camps/{id}", controller.get_blood_camp_by_id, methods=["GET"])
+router.add_api_route("/camps/{id}", controller.update_blood_camp, methods=["PATCH", "PUT"])
+router.add_api_route("/camps/{id}/status", controller.update_blood_camp_status, methods=["PATCH", "PUT"])
+router.add_api_route("/camps/{id}", controller.delete_blood_camp, methods=["DELETE"])
+
 router.add_api_route("/labs", controller.get_all_labs, methods=["GET"])
 router.add_api_route("/hospitals", controller.get_hospitals_for_issue, methods=["GET"])
